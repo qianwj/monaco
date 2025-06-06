@@ -10,6 +10,8 @@ import io.vertx.core.json.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 
 public final class MonacoServer {
@@ -34,7 +36,17 @@ public final class MonacoServer {
 
     private void startExtensionServer(Vertx vertx, JsonObject config) {
         JsonObject extensionConfig = config.getJsonObject("extensions");
-        String path = extensionConfig.getString("path", "./extensions/data.socks");
+        String path = extensionConfig.getString("address", "./extensions/data.socks");
+        var file = new File(path);
+        if (!file.exists()) {
+            try {
+                //noinspection ResultOfMethodCallIgnored
+                file.createNewFile();
+            } catch (IOException e) {
+                log.error("Can't create extension address", e);
+                return;
+            }
+        }
         var options = new DeploymentOptions().setInstances(1).setConfig(extensionConfig);
         vertx.deployVerticle(new ExtensionServer(path), options);
     }
