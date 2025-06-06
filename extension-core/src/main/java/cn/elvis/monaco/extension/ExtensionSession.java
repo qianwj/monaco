@@ -30,14 +30,14 @@ final class ExtensionSession {
 
     private void connect() {
         connection.handler(buffer -> {
-            var request = Request.getRootAsRequest(ByteBuffer.wrap(buffer.getBytes()));
-            handlerFactory.handle(request).onComplete(ar -> {
-                if (ar.succeeded()) {
-                    connection.write(ar.result());
-                } else {
-                    log.error("Extension handle message error: ", ar.cause());
-                }
-            });
+//            var request = Request.getRootAsRequest(ByteBuffer.wrap(buffer.getBytes()));
+//            handlerFactory.handle(request).onComplete(ar -> {
+//                if (ar.succeeded()) {
+//                    connection.write(ar.result());
+//                } else {
+//                    log.error("Extension handle message error: ", ar.cause());
+//                }
+//            });
         });
     }
 }
