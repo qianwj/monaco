@@ -3,17 +3,21 @@
 
 [versions]
 vertx = "5.0.0"
+flatbuffers = "25.2.10"
 jackson = "2.18.2"
 log4j = "2.24.3"
 junit-jupiter = "5.10.3"
 
 [libraries]
 vertx-platform = { module = "io.vertx:vertx-stack-depchain", version.ref = "vertx" }
+vertx-core = { module = "io.vertx:vertx-core", version.ref = "vertx" }
 vertx-config = { module = "io.vertx:vertx-config", version.ref = "vertx" }
 vertx-mqtt = { module = "io.vertx:vertx-mqtt", version.ref = "vertx" }
 vertx-test = { module = "io.vertx:vertx-junit5", version.ref = "vertx" }
 
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+
+flatbuffers = { module = "com.google.flatbuffers:flatbuffers-java", version.ref = "flatbuffers" }
 
 log4j-platform = { module = "org.apache.logging.log4j:log4j-bom", version.ref = "log4j" }
 log4j-api = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j" }

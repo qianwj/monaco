@@ -1,0 +1,31 @@
+include "authenticate.fbs";
+
+namespace cn.elvis.monaco.extension.dsl;
+
+attribute "java_package:cn.elvis.monaco.extension.dsl";
+
+enum RequestType:byte {
+    UNKNOWN               = 0x00,
+    AUTHENTICATE          = 0x01,
+    ENHANCED_AUTHENTICATE = 0x02,
+}
+
+union RequestBody {
+    authenticate: AuthenticateRequest,
+    enhanced_authenticate: EnhancedAuthenticateRequest
+}
+
+union ResponseBody {
+    authenticate: AuthenticateReply,
+    enhanced_authenticate: EnhancedAuthenticateReply
+}
+
+table Request {
+    request_type: RequestType;
+    request_body: RequestBody;
+}
+
+table Response {
+    request_type: RequestType;
+    response_body: ResponseBody;
+}

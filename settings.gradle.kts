@@ -11,4 +11,4 @@ plugins {
 }
 
 rootProject.name = "monaco"
-include("app")
+include("app", "common", "extension-core")

@@ -1,0 +1,34 @@
+namespace cn.elvis.monaco.extension.dsl;
+
+attribute "java_package:cn.elvis.monaco.extension.dsl";
+
+enum EnhancedAuthenticateState:short {
+  SUCCESS  = 0x00,
+  FAILURE  = 0x01,
+  CONTINUE = 0x18,
+}
+
+table AuthenticateRequest {
+  username  :string;
+  password  :string;
+  client_id :string;
+}
+
+table AuthenticateReply {
+  passed  :bool;
+  message :string;
+}
+
+table EnhancedAuthenticateRequest {
+  method    :string;
+  data      :[byte];
+  client_id :string;
+}
+
+table EnhancedAuthenticateReply {
+  method    :string;
+  data      :[byte];
+  state     :EnhancedAuthenticateState;
+  message   :string;
+  client_id :string;
+}

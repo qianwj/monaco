@@ -2,6 +2,7 @@ package cn.elvis.monaco;
 
 import cn.elvis.monaco.configuration.ConfigurationLoader;
 import cn.elvis.monaco.configuration.TransportConfiguration;
+import cn.elvis.monaco.extension.ExtensionServer;
 import cn.elvis.monaco.transport.MqttTransport;
 import cn.elvis.monaco.transport.TransportType;
 import io.vertx.core.*;
@@ -24,13 +25,21 @@ public final class MonacoServer {
 
     public void start() {
         Vertx vertx = Vertx.vertx();
-        ConfigurationLoader.load(vertx).compose(config -> {
+        ConfigurationLoader.load(vertx).onSuccess(config -> {
             log.info("MonacoServer starting...");
-            return startMqttTransport(vertx, config);
+            startExtensionServer(vertx, config);
+            startMqttTransport(vertx, config);
         });
     }
 
-    private Future<Void> startMqttTransport(Vertx vertx, JsonObject config) {
+    private void startExtensionServer(Vertx vertx, JsonObject config) {
+        JsonObject extensionConfig = config.getJsonObject("extensions");
+        String path = extensionConfig.getString("path", "./extensions/data.socks");
+        var options = new DeploymentOptions().setInstances(1).setConfig(extensionConfig);
+        vertx.deployVerticle(new ExtensionServer(path), options);
+    }
+
+    private void startMqttTransport(Vertx vertx, JsonObject config) {
         JsonObject transportConfig = config.getJsonObject("transport");
         var futures = new ArrayList<Future<String>>();
         for (TransportType type : TransportType.values()) {
@@ -50,14 +59,11 @@ public final class MonacoServer {
                 }
             }
         }
-        return Future.<String>all(futures).compose(depIds -> {
+        Future.<String>all(futures).onComplete(depIds -> {
             log.info("MonacoServer started.");
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                for (Object id : depIds.list()) {
-                    vertx.undeploy(id.toString());
-                }
+                vertx.close();
             }));
-            return Future.succeededFuture();
         });
     }
 }
