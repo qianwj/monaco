@@ -29,3 +29,8 @@ table Response {
     request_type: RequestType;
     response_body: ResponseBody;
 }
+
+table Metadata {
+    session_id: string;
+    extension_types: [string];
+}
