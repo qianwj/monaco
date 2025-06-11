@@ -4,7 +4,7 @@ namespace cn.elvis.monaco.extension.dsl;
 
 attribute "java_package:cn.elvis.monaco.extension.dsl";
 
-enum RequestType:byte {
+enum ExtensionType:byte {
     UNKNOWN               = 0x00,
     AUTHENTICATE          = 0x01,
     ENHANCED_AUTHENTICATE = 0x02,
@@ -21,16 +21,16 @@ union ResponseBody {
 }
 
 table Request {
-    request_type: RequestType;
+    request_type: ExtensionType;
     request_body: RequestBody;
 }
 
 table Response {
-    request_type: RequestType;
+    request_type: ExtensionType;
     response_body: ResponseBody;
 }
 
 table Metadata {
     session_id: string;
-    extension_types: [string];
+    extension_types: [byte];
 }

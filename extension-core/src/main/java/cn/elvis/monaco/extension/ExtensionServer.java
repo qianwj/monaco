@@ -7,18 +7,16 @@ import io.vertx.core.net.SocketAddress;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 public class ExtensionServer extends AbstractVerticle {
 
     private static final Logger log = LogManager.getLogger(ExtensionServer.class);
 
-    private final Map<String, ExtensionSession> extensions = new ConcurrentHashMap<>();
+    private final ExtensionManager manager;
 
     private final SocketAddress address;
 
-    public ExtensionServer(String path) {
+    public ExtensionServer(ExtensionManager manager, String path) {
+        this.manager = manager;
         this.address = SocketAddress.domainSocketAddress(path);
     }
 
@@ -29,19 +27,7 @@ public class ExtensionServer extends AbstractVerticle {
         NetServer server = vertx.createNetServer();
         server.connectHandler(connection -> {
             var session = new ExtensionSession(vertx, connection, bufferSize, requestTimeout);
-            session.connect().compose(metadata -> {
-                boolean register = false;
-                for (String extensionType : metadata.extensionTypes()) {
-                    if (!extensions.containsKey(extensionType)) {
-                        extensions.put(extensionType, session);
-                        register = true;
-                    }
-                }
-                if (!register) {
-                    session.close();
-                }
-                return null;
-            });
+            manager.register(session);
         }).listen(address).onComplete(ar -> {
            if (ar.succeeded()) {
                log.info("Extension server started on port {}", ar.result().actualPort());
@@ -53,7 +39,7 @@ public class ExtensionServer extends AbstractVerticle {
 
     @Override
     public void stop(Promise<Void> stopper) throws Exception {
-        extensions.values().forEach(ExtensionSession::close);
+        manager.unregisterAll();
         stopper.complete();
     }
 }

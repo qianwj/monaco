@@ -1,5 +1,6 @@
 package cn.elvis.monaco.extension;
 
+import cn.elvis.monaco.extension.dsl.ExtensionType;
 import cn.elvis.monaco.extension.dsl.Metadata;
 import cn.elvis.monaco.extension.dsl.Request;
 import cn.elvis.monaco.extension.dsl.Response;
@@ -70,7 +71,7 @@ final class ExtensionSession {
                     var length = metadata.extensionTypesLength();
                     String[] extensionTypes = new String[length];
                     for (int i = 0; i < length; i++) {
-                        extensionTypes[i] = metadata.extensionTypes(i);
+                        extensionTypes[i] = ExtensionType.name(metadata.extensionTypes(i));
                     }
                     this.sessionId = metadata.sessionId();
                     connecting.complete(new ConnectionMetadata(sessionId, extensionTypes));
