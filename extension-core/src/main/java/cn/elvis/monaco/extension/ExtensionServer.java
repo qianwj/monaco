@@ -15,8 +15,8 @@ public class ExtensionServer extends AbstractVerticle {
 
     private final SocketAddress address;
 
-    public ExtensionServer(ExtensionManager manager, String path) {
-        this.manager = manager;
+    public ExtensionServer(String path) {
+        this.manager = new ExtensionManager();
         this.address = SocketAddress.domainSocketAddress(path);
     }
 

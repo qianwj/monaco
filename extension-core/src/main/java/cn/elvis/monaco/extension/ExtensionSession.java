@@ -2,7 +2,6 @@ package cn.elvis.monaco.extension;
 
 import cn.elvis.monaco.extension.dsl.ExtensionType;
 import cn.elvis.monaco.extension.dsl.Metadata;
-import cn.elvis.monaco.extension.dsl.Request;
 import cn.elvis.monaco.extension.dsl.Response;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -94,7 +93,7 @@ final class ExtensionSession {
         return connecting.future();
     }
 
-    public Future<Response> request(Request request) {
+    Future<Response> request(ByteBuffer request) {
         int requestId = this.requestId.incrementAndGet();
         Promise<Response> promise = Promise.promise();
         vertx.setTimer(requestTimeout, t -> {
@@ -106,7 +105,7 @@ final class ExtensionSession {
         pendingRequests.put(requestId, promise);
         Buffer buffer = Buffer.buffer()
                 .appendInt(requestId)
-                .appendBytes(request.getByteBuffer().array());
+                .appendBytes(request.array());
         connection.write(buffer).onFailure(ex -> {
             pendingRequests.remove(requestId);
             promise.fail(ex);

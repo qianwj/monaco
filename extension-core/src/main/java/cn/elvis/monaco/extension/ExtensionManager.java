@@ -1,12 +1,10 @@
 package cn.elvis.monaco.extension;
 
-import cn.elvis.monaco.extension.dsl.ExtensionType;
-import cn.elvis.monaco.extension.dsl.Request;
-import cn.elvis.monaco.extension.dsl.RequestType;
+import cn.elvis.monaco.extension.dsl.*;
 import com.google.flatbuffers.FlatBufferBuilder;
-import com.google.flatbuffers.Table;
+import io.vertx.core.Future;
 
-import java.util.Arrays;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -20,9 +18,12 @@ public final class ExtensionManager {
 
     private final Map<String, Byte> extensionTypes = new HashMap<>();
 
+    private final Map<String, Byte> requestBodyTypes = new HashMap<>();
+
     ExtensionManager() {
         for (int i = 0; i < ExtensionType.names.length; i++) {
             extensionTypes.put(ExtensionType.name(i), (byte) i);
+            requestBodyTypes.put(RequestBody.name(i).toUpperCase(), (byte) i);
         }
     }
 
@@ -46,14 +47,21 @@ public final class ExtensionManager {
         extensions.values().forEach(ExtensionSession::close);
     }
 
-    private <Req extends Table> void request(String extensionType, Req request) {
+    Future<Response> request(String extensionType, ByteBuffer request) {
         if (!extensions.containsKey(extensionType)) {
             throw new ExtensionNotFoundException(extensionType);
         }
-//        var builder = Optional.ofNullable(builderPool.get()).orElse(new FlatBufferBuilder());
-//        Request message = Request.createRequest(
-//                builder,
-//        );
-//        extensions.get(extensionType).request()
+        var builder = Optional.ofNullable(builderPool.get()).orElse(new FlatBufferBuilder());
+        int offset = Request.createRequest(
+                builder,
+                extensionTypes.get(extensionType),
+                requestBodyTypes.get(extensionType),
+                builder.createByteVector(request)
+        );
+        builder.finish(offset);
+        var data = builder.dataBuffer();
+        builder.clear();
+        builderPool.set(builder);
+        return extensions.get(extensionType).request(data);
     }
 }
