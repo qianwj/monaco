@@ -25,6 +25,10 @@ dependencies {
 
     implementation(libs.vertx.config)
     implementation(libs.vertx.mqtt)
+    implementation(libs.vertx.cluster)
+    implementation(libs.vertx.metrics)
+
+    implementation(libs.metrics.prometheus)
     implementation(libs.jackson.databind)
     implementation(libs.log4j.api)
 

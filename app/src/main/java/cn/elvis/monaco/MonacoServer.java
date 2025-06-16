@@ -1,12 +1,17 @@
 package cn.elvis.monaco;
 
 import cn.elvis.monaco.configuration.ConfigurationLoader;
+import cn.elvis.monaco.configuration.MetricsConfiguration;
 import cn.elvis.monaco.configuration.TransportConfiguration;
 import cn.elvis.monaco.extension.ExtensionServer;
 import cn.elvis.monaco.transport.MqttTransport;
 import cn.elvis.monaco.transport.TransportType;
 import io.vertx.core.*;
+import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.cluster.infinispan.InfinispanClusterManager;
+import io.vertx.micrometer.MicrometerMetricsOptions;
+import io.vertx.micrometer.VertxPrometheusOptions;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,9 +31,19 @@ public final class MonacoServer {
     }
 
     public void start() {
-        Vertx vertx = Vertx.vertx();
-        ConfigurationLoader.load(vertx).onSuccess(config -> {
+        ConfigurationLoader.load(Vertx.vertx()).onSuccess(config -> {
             log.info("MonacoServer starting...");
+            boolean clusterEnabled = config.getBoolean("cluster", false);
+            VertxOptions vertxOptions = initMetrics(config);
+            Vertx vertx;
+            if (clusterEnabled) {
+                var clusterManager = new InfinispanClusterManager();
+                vertx = Vertx.builder()
+                        .with(vertxOptions)
+                        .withClusterManager(clusterManager).build();
+            } else {
+                vertx = Vertx.vertx(vertxOptions);
+            }
             startExtensionServer(vertx, config);
             startMqttTransport(vertx, config);
         });
@@ -77,5 +92,22 @@ public final class MonacoServer {
                 vertx.close();
             }));
         });
+    }
+
+    private VertxOptions initMetrics(JsonObject config) {
+        MetricsConfiguration metricsConfig = config.getJsonObject("metrics").mapTo(MetricsConfiguration.class);
+        VertxOptions options = new VertxOptions();
+        return options.setMetricsOptions(
+                new MicrometerMetricsOptions()
+                        .setPrometheusOptions(
+                                new VertxPrometheusOptions()
+                                        .setEmbeddedServerEndpoint(metricsConfig.getEndpoint())
+                                        .setEmbeddedServerOptions(new HttpServerOptions().setPort(metricsConfig.getPort()))
+                                        .setStartEmbeddedServer(metricsConfig.isEnabled())
+                                        .setEnabled(metricsConfig.isEnabled())
+                        )
+                        .setEnabled(metricsConfig.isEnabled())
+                        .setJvmMetricsEnabled(true)
+        );
     }
 }
