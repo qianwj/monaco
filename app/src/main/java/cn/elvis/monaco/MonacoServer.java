@@ -1,6 +1,5 @@
 package cn.elvis.monaco;
 
-import cn.elvis.monaco.configuration.ConfigurationLoader;
 import cn.elvis.monaco.configuration.MetricsConfiguration;
 import cn.elvis.monaco.configuration.TransportConfiguration;
 import cn.elvis.monaco.extension.ExtensionServer;
@@ -26,30 +25,34 @@ public final class MonacoServer {
 
     private static final Logger log = LogManager.getLogger(MonacoServer.class);
 
+    private final ConfigurationLoader configurationLoader;
+
     public MonacoServer() {
         System.setProperty(
                 "vertx.logger-delegate-factory-class-name",
                 "io.vertx.core.logging.Log4j2LogDelegateFactory"
         );
+        this.configurationLoader = new ConfigurationLoader();
     }
 
     public void start() {
         long currentTimeMillis = System.currentTimeMillis();
-        var vertx = Vertx.vertx();
-        var config = ConfigurationLoader.load(vertx);
+        var config =  configurationLoader.init();
         config.put("startTime", currentTimeMillis);
-        vertx.close();
         LoggerInitializer.init(config);
         log.info("MonacoServer starting...");
-        createVertxInstance(config).compose(instance -> {
+        createVertxInstance(config).compose(vertx -> {
+            Runtime.getRuntime().addShutdownHook(new Thread(vertx::close));
             try {
-                startExtensionServer(instance, config);
-                startMqttTransport(instance, config);
+                startExtensionServer(vertx, config);
+                startMqttTransport(vertx, config);
+                configurationLoader.watch(vertx);
             } catch (Exception e) {
                 return Future.failedFuture(e);
             }
             return Future.succeededFuture();
-        }).onFailure(e -> log.error("MonacoServer start failed", e));
+        })
+                .onFailure(e -> log.error("MonacoServer start failed", e));
     }
 
     private Future<Vertx> createVertxInstance(JsonObject config) {
@@ -114,11 +117,8 @@ public final class MonacoServer {
                 }
             }
         }
-        Future.<String>all(futures).onComplete(depIds -> {
+        Future.<String>all(futures).onComplete(unused -> {
             log.info("MonacoServer started. Time used: {}ms", System.currentTimeMillis() - startTime);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                vertx.close();
-            }));
         });
     }
 
