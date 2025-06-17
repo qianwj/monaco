@@ -12,6 +12,7 @@ import org.gradle.api.tasks.testing.logging.TestLogEvent.SKIPPED
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     application
+    id("com.google.cloud.tools.jib") version "3.4.5"
 }
 
 repositories {
@@ -34,7 +35,7 @@ dependencies {
 
     implementation(project(":extension-core"))
 
-    runtimeOnly(libs.log4j.core)
+    implementation(libs.log4j.core)
 
     testImplementation(libs.vertx.test)
     testImplementation(libs.junit.jupiter)
@@ -53,6 +54,10 @@ java {
 application {
     // Define the main class for the application.
     mainClass = "cn.elvis.monaco.MonacoApplication"
+}
+
+jib {
+
 }
 
 tasks.named<Test>("test") {

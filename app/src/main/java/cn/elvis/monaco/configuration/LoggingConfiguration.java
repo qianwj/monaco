@@ -8,6 +8,8 @@ public class LoggingConfiguration {
         return config.getJsonObject("logging").mapTo(LoggingConfiguration.class);
     }
 
+    private String rootLevel;
+
     private ConsoleLoggerConfiguration console;
 
     public static class ConsoleLoggerConfiguration {
@@ -44,6 +46,15 @@ public class LoggingConfiguration {
             this.pattern = pattern;
             return this;
         }
+    }
+
+    public String getRootLevel() {
+        return rootLevel;
+    }
+
+    public LoggingConfiguration setRootLevel(String rootLevel) {
+        this.rootLevel = rootLevel;
+        return this;
     }
 
     public ConsoleLoggerConfiguration getConsole() {

@@ -4,6 +4,7 @@ import cn.elvis.monaco.configuration.ConfigurationLoader;
 import cn.elvis.monaco.configuration.MetricsConfiguration;
 import cn.elvis.monaco.configuration.TransportConfiguration;
 import cn.elvis.monaco.extension.ExtensionServer;
+import cn.elvis.monaco.logging.LoggerInitializer;
 import cn.elvis.monaco.transport.MqttTransport;
 import cn.elvis.monaco.transport.TransportType;
 import io.vertx.core.*;
@@ -18,6 +19,8 @@ import org.apache.logging.log4j.Logger;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Optional;
 
 public final class MonacoServer {
 
@@ -31,26 +34,50 @@ public final class MonacoServer {
     }
 
     public void start() {
-        ConfigurationLoader.load(Vertx.vertx()).onSuccess(config -> {
-            log.info("MonacoServer starting...");
-            boolean clusterEnabled = config.getBoolean("cluster", false);
-            VertxOptions vertxOptions = initMetrics(config);
-            Vertx vertx;
-            if (clusterEnabled) {
-                var clusterManager = new InfinispanClusterManager();
-                vertx = Vertx.builder()
-                        .with(vertxOptions)
-                        .withClusterManager(clusterManager).build();
-            } else {
-                vertx = Vertx.vertx(vertxOptions);
+        long currentTimeMillis = System.currentTimeMillis();
+        var vertx = Vertx.vertx();
+        var config = ConfigurationLoader.load(vertx);
+        config.put("startTime", currentTimeMillis);
+        vertx.close();
+        LoggerInitializer.init(config);
+        log.info("MonacoServer starting...");
+        createVertxInstance(config).compose(instance -> {
+            try {
+                startExtensionServer(instance, config);
+                startMqttTransport(instance, config);
+            } catch (Exception e) {
+                return Future.failedFuture(e);
             }
-            startExtensionServer(vertx, config);
-            startMqttTransport(vertx, config);
-        });
+            return Future.succeededFuture();
+        }).onFailure(e -> log.error("MonacoServer start failed", e));
+    }
+
+    private Future<Vertx> createVertxInstance(JsonObject config) {
+        String mode = Optional.ofNullable(config.getString("mode", null))
+                .filter(String::isBlank)
+                .orElse("standalone")
+                .toLowerCase();
+        VertxOptions vertxOptions = initMetrics(config);
+        return switch (mode) {
+            case "cluster" -> {
+                var clusterManager = new InfinispanClusterManager();
+                yield Vertx.builder()
+                        .with(vertxOptions)
+                        .withClusterManager(clusterManager).buildClustered();
+            }
+            case "bridge" ->
+                // todo: build tcp event bridge.
+                    Future.succeededFuture(Vertx.vertx(vertxOptions));
+            default -> Future.succeededFuture(Vertx.vertx(vertxOptions));
+        };
     }
 
     private void startExtensionServer(Vertx vertx, JsonObject config) {
         JsonObject extensionConfig = config.getJsonObject("extensions");
+        if (Objects.isNull(extensionConfig)) {
+            log.warn("Extensions configuration is empty");
+            return;
+        }
         String path = extensionConfig.getString("address", "./extensions/data.socks");
         var file = new File(path);
         if (!file.exists()) {
@@ -68,6 +95,7 @@ public final class MonacoServer {
 
     private void startMqttTransport(Vertx vertx, JsonObject config) {
         JsonObject transportConfig = config.getJsonObject("transport");
+        long startTime = config.getLong("startTime", System.currentTimeMillis());
         var futures = new ArrayList<Future<String>>();
         for (TransportType type : TransportType.values()) {
             var transportKey = type.name().toLowerCase();
@@ -87,7 +115,7 @@ public final class MonacoServer {
             }
         }
         Future.<String>all(futures).onComplete(depIds -> {
-            log.info("MonacoServer started.");
+            log.info("MonacoServer started. Time used: {}ms", System.currentTimeMillis() - startTime);
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 vertx.close();
             }));

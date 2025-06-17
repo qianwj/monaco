@@ -11,7 +11,7 @@ import io.vertx.core.json.JsonObject;
 
 public final class ConfigurationLoader {
 
-    public static Future<JsonObject> load(Vertx vertx) {
+    public static synchronized JsonObject load(Vertx vertx) {
         ConfigStoreOptions propsStoreOptions = new ConfigStoreOptions()
                 .setType("sys")
                 .setConfig(
@@ -29,14 +29,14 @@ public final class ConfigurationLoader {
                 .addStore(fileStoreOptions)
                 .addStore(propsStoreOptions);
         ConfigRetriever retriever = ConfigRetriever.create(vertx, options);
-        retriever.listen(change -> {
-            // todo: compare previous config and new config
-            vertx.eventBus().publish(
-                    ChannelKeys.CONFIGURATION_CHANGE,
-                    change.getNewConfiguration(),
-                    new DeliveryOptions().setLocalOnly(true)
-            );
-        });
-        return retriever.getConfig();
+//        retriever.listen(change -> {
+//            // todo: compare previous config and new config
+//            vertx.eventBus().publish(
+//                    ChannelKeys.CONFIGURATION_CHANGE,
+//                    change.getNewConfiguration(),
+//                    new DeliveryOptions().setLocalOnly(true)
+//            );
+//        });
+        return retriever.getConfig().await();
     }
 }
