@@ -31,7 +31,7 @@ public final class MqttTransport extends AbstractVerticle {
         var server = MqttServer.create(vertx, options);
         server.endpointHandler(endpoint -> {
             MqttAuth auth = endpoint.auth();
-
+            endpoint.will();
         });
         server.listen().andThen(ar -> {
             if (ar.succeeded()) {

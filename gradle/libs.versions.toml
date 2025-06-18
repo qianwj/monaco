@@ -14,6 +14,7 @@ vertx-platform = { module = "io.vertx:vertx-stack-depchain", version.ref = "vert
 vertx-core = { module = "io.vertx:vertx-core", version.ref = "vertx" }
 vertx-config = { module = "io.vertx:vertx-config", version.ref = "vertx" }
 vertx-mqtt = { module = "io.vertx:vertx-mqtt", version.ref = "vertx" }
+vertx-jdbc = { module = "io.vertx:vertx-jdbc-client", version.ref = "vertx" }
 vertx-cluster = { module = "io.vertx:vertx-infinispan", version.ref = "vertx" }
 vertx-metrics = { module = "io.vertx:vertx-micrometer-metrics", version.ref = "vertx" }
 metrics-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "metrics-prometheus" }

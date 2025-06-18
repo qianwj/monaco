@@ -24,6 +24,8 @@ repositories {
 
 dependencies {
 
+    implementation(libs.vertx.core)
+
     implementation(libs.log4j.api)
     runtimeOnly(libs.log4j.core)
 

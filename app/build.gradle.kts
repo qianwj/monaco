@@ -26,6 +26,7 @@ dependencies {
 
     implementation(libs.vertx.config)
     implementation(libs.vertx.mqtt)
+    implementation(libs.vertx.jdbc)
     implementation(libs.vertx.cluster)
     implementation(libs.vertx.metrics)
 
@@ -33,9 +34,13 @@ dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.log4j.api)
 
+    implementation(project(":common"))
     implementation(project(":extension-core"))
 
     implementation(libs.log4j.core)
+
+    // https://mvnrepository.com/artifact/com.h2database/h2
+    implementation("com.h2database:h2:2.3.232")
 
     testImplementation(libs.vertx.test)
     testImplementation(libs.junit.jupiter)
