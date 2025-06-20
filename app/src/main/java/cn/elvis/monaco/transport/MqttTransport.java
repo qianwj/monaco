@@ -9,6 +9,8 @@ import io.vertx.mqtt.MqttServerOptions;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Map;
+
 public final class MqttTransport extends AbstractVerticle {
 
     private static final Logger log = LogManager.getLogger(MqttTransport.class);
@@ -30,12 +32,13 @@ public final class MqttTransport extends AbstractVerticle {
         }
         var server = MqttServer.create(vertx, options);
         server.endpointHandler(endpoint -> {
-            MqttAuth auth = endpoint.auth();
-            endpoint.will();
+            System.out.println("connecting");
+//            MqttAuth auth = endpoint.auth();
+//            endpoint.will();
         });
         server.listen().andThen(ar -> {
             if (ar.succeeded()) {
-                log.info("Transport[{}] already started", transportConfig.getType());
+                log.info("Transport[{}] already started on [:{}]", transportConfig.getType(), ar.result().actualPort());
                 starter.complete();
             } else {
                 log.error("Transport[{}] start failed", transportConfig.getType(), ar.cause());

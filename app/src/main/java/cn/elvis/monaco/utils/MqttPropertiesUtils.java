@@ -15,6 +15,11 @@ public final class MqttPropertiesUtils {
         return value.map(b -> b > 0).orElse(defaultValue);
     }
 
+    public static int intValue(MqttProperties properties, MqttPropertyType propertyType, int defaultValue) {
+        Optional<Integer> value = getValue(properties, propertyType);
+        return value.orElse(defaultValue);
+    }
+
     public static long longValue(MqttProperties properties, MqttPropertyType propertyType, long defaultValue) {
         Optional<Long> value = getValue(properties, propertyType);
         return value.orElse(defaultValue);
