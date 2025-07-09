@@ -5,7 +5,7 @@ import io.vertx.core.Vertx;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 
-public final class Publisher {
+final class Publisher {
 
     private final MqttEndpoint endpoint;
 

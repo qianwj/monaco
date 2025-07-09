@@ -14,6 +14,12 @@ import io.vertx.mqtt.messages.codes.MqttAuthenticateReasonCode;
 
 import java.util.Optional;
 
+/**
+ * Mqtt session connector
+ *
+ * @author qianwj
+ * @since  0.0.1
+ */
 final class Connector {
 
     private final MqttEndpoint endpoint;
@@ -26,16 +32,20 @@ final class Connector {
 
     private final boolean withProblemInfo;
 
+    private final MqttPropertiesBuilder connectAckPropertiesBuilder;
+
     public Connector(MqttEndpoint endpoint,
                      Authenticator authenticator,
                      EnhancedAuthenticationManager enhancedAuthenticator,
                      boolean needEnhancedAuthenticate,
-                     boolean withProblemInfo) {
+                     boolean withProblemInfo,
+                     MqttPropertiesBuilder connectAckPropertiesBuilder) {
         this.endpoint = endpoint;
         this.authenticator = authenticator;
         this.enhancedAuthenticator = enhancedAuthenticator;
         this.needEnhancedAuthenticate = needEnhancedAuthenticate;
         this.withProblemInfo = withProblemInfo;
+        this.connectAckPropertiesBuilder = connectAckPropertiesBuilder;
     }
 
     Future<Boolean> connect(Vertx vertx) {
@@ -44,14 +54,13 @@ final class Connector {
                 if (needEnhancedAuthenticate) {
                     return enhancedAuthenticator.authenticate(endpoint.clientIdentifier(), endpoint.connectProperties())
                             .map(authResult -> {
-                                var properties = MqttPropertiesBuilder.create()
-                                        .withAuthenticationMethod(authResult.method())
+                                connectAckPropertiesBuilder.withAuthenticationMethod(authResult.method())
                                         .withAuthenticationData(authResult.data());
                                 return switch (authResult.state()) {
                                     case FAILURE -> {
                                         if (withProblemInfo) {
-                                            properties.withReasonString(authResult.message());
-                                            endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_BAD_AUTHENTICATION_METHOD, properties.build());
+                                            var properties = connectAckPropertiesBuilder.withReasonString(authResult.message()).build();
+                                            endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_BAD_AUTHENTICATION_METHOD, properties);
                                         } else {
                                             endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_BAD_AUTHENTICATION_METHOD);
                                         }
@@ -59,7 +68,8 @@ final class Connector {
                                     }
                                     case CONTINUE, RE_AUTHENTICATE, SUCCESS -> {
                                         var code = MqttAuthenticateReasonCode.valueOf(authResult.state().code());
-                                        MqttAuthenticationExchangeMessage authExchange = MqttAuthenticationExchangeMessage.create(code, properties.build());
+                                        var properties = connectAckPropertiesBuilder.build();
+                                        MqttAuthenticationExchangeMessage authExchange = MqttAuthenticationExchangeMessage.create(code, properties);
                                         endpoint.authenticationExchange(authExchange);
                                         yield true;
                                     }
@@ -74,7 +84,7 @@ final class Connector {
                 return vertx.eventBus()
                         .<Boolean>request(ChannelKeys.SESSION_EXISTS, endpoint.clientIdentifier())
                         .compose(reply -> {
-                            endpoint.accept(reply.body());
+                            endpoint.accept(reply.body(), connectAckPropertiesBuilder.build());
                             return Future.succeededFuture(true);
                         });
             }

@@ -39,6 +39,9 @@ public final class Session {
                    Authenticator authenticator,
                    EnhancedAuthenticationManager enhancedAuthenticator) {
         this.endpoint = endpoint;
+        if (config.isServerKeepalive()) {
+            this.endpoint.autoKeepAlive(true);
+        }
         this.connectionProperties = ConnectionProperties.fromPropertiesAndConfig(endpoint.connectProperties(), config);
         this.will = SessionWill.create(endpoint.will());
         this.connector = new Connector(
@@ -46,7 +49,8 @@ public final class Session {
                 authenticator,
                 enhancedAuthenticator,
                 config.isEnableEnhancedAuthenticate(),
-                connectionProperties.withProblemInfo()
+                connectionProperties.withProblemInfo(),
+                config.toMqttProperties()
         );
         var operateChecker = new OperateChecker(enhancedAuthenticator, config.isEnableEnhancedAuthenticate(), endpoint);
         this.publisher = new Publisher(endpoint, vertx, operateChecker);
