@@ -1,6 +1,8 @@
 package cn.elvis.monaco.persistence;
 
 import io.vertx.core.Future;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
 
 import java.util.concurrent.ArrayBlockingQueue;
 
@@ -10,12 +12,15 @@ public abstract class FileRepository<T> implements Repository<T> {
 
     private final Thread writer;
 
+    protected final RocksDB db;
+
     private volatile boolean running = true;
 
     private volatile boolean finished = false;
 
-    public FileRepository(String name, int writeQueueSize) {
+    public FileRepository(String name, int writeQueueSize) throws RocksDBException {
         queue = new ArrayBlockingQueue<>(writeQueueSize);
+        db = RocksDB.open(name);
         writer = Thread.ofVirtual().name(name).start(() -> {
             while (running) {
                 var data = queue.poll();
@@ -44,7 +49,5 @@ public abstract class FileRepository<T> implements Repository<T> {
         queue.offer(t);
     }
 
-    private void write0(T data) {
-        
-    }
+    abstract void write0(T data);
 }

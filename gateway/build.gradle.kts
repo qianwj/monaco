@@ -60,7 +60,7 @@ java {
 
 application {
     // Define the main class for the application.
-    mainClass = "cn.elvis.monaco.MonacoApplication"
+    mainClass = "cn.elvis.monaco.gateway.GatewayApplication"
 }
 
 jib {
