@@ -14,6 +14,21 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * The simplest MQTT Broker
+ *  1. Always accept client connect request.
+ *  2. Only subscribe exact topic(exclude wildcard topic & shared topic).
+ *  3. Only publish to exact topic.
+ *  4. Support qos2 messages.
+ *     See also: <a href="https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_QoS_2:_Exactly">QoS 2: Exactly once delivery</a>
+ *     ---------------------------------------------------------------------------------------------------
+ *     | sender ---- PUBLISH ---> broker(counting total)   ---- PUBLISH ---> receiver_1, receiver2, .... |
+ *     |        <--- PUBREC  ----                          <--- PUBREC  ----                             |
+ *     |        ---- PUBREL  --->                          ---- PUBREL  --->                             |
+ *     |        <--- PUBCOMP ---- (release stored message) <--- PUBCOMP ----                             |
+ *     ---------------------------------------------------------------------------------------------------
+ *  5. Not support bridge mode & cluster mode.
+ */
 public class GatewayVerticle extends AbstractVerticle {
 
     private final Map<String, MqttEndpoint> clientStore = new ConcurrentHashMap<>();
