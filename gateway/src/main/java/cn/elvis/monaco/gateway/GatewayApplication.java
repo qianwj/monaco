@@ -8,5 +8,6 @@ public class GatewayApplication {
     public static void main(String[] args) {
         var vertx = Vertx.vertx();
         vertx.deployVerticle(GatewayVerticle.class, new DeploymentOptions().setInstances(1));
+        vertx.deployVerticle(MetricsVerticle.class, new DeploymentOptions().setInstances(1));
     }
 }

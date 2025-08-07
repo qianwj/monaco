@@ -2,6 +2,9 @@ package cn.elvis.monaco.gateway;
 
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.internal.logging.Logger;
+import io.vertx.core.internal.logging.LoggerFactory;
+import io.vertx.core.json.Json;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.MqttServer;
 import io.vertx.mqtt.MqttTopicSubscription;
@@ -44,10 +47,11 @@ public class GatewayVerticle extends AbstractVerticle {
      *    key:   receiver_client_id
      *    value: true is received
      */
-    private final Map<Integer, Map<String, Boolean>> messageStateStore = new ConcurrentHashMap<>();
+    static final Map<Integer, Map<String, Boolean>> messageStateStore = new ConcurrentHashMap<>();
 
     @Override
     public void start() throws Exception {
+        final Logger log = LoggerFactory.getLogger(GatewayVerticle.class);
         MqttServer server = MqttServer.create(vertx);
         server.endpointHandler(endpoint -> {
             endpoint.accept(true)
@@ -62,6 +66,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 }
             });
             endpoint.publishHandler(packet -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
                 var topicName = packet.topicName();
                 var qos = packet.qosLevel();
                 var clients = subscribeStore.getOrDefault(topicName, new ArrayList<>());
@@ -81,6 +86,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 }
             });
             endpoint.publishReceivedHandler(messageId -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + messageId);
                 var receivedState = messageStateStore.getOrDefault(messageId, new ConcurrentHashMap<>());
                 var received = receivedState.getOrDefault(endpoint.clientIdentifier(), false);
                 if (received) {
@@ -92,19 +98,23 @@ public class GatewayVerticle extends AbstractVerticle {
                 messageStateStore.put(messageId, receivedState);
             });
             endpoint.publishReleaseHandler(messageId -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREL packet: " + messageId);
                 var messageState = messageStateStore.get(messageId);
                 if (messageState == null || messageState.isEmpty()) {
                     endpoint.publishComplete(messageId);
                 }
             });
             endpoint.publishCompletionHandler(messageId -> {
-               var receiveState = messageStateStore.get(messageId);
-               if (receiveState == null || receiveState.isEmpty()) {
-                   endpoint.publishComplete(messageId);
-                   return;
-               }
-               receiveState.remove(endpoint.clientIdentifier());
+                log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
+                var receiveState = messageStateStore.get(messageId);
+                if (receiveState == null || receiveState.isEmpty()) {
+                    messageStateStore.remove(messageId);
+                    endpoint.publishComplete(messageId);
+                    return;
+                }
+                receiveState.remove(endpoint.clientIdentifier());
             });
         }).listen(18083);
+        log.info("broker started");
     }
 }
