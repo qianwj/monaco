@@ -7,10 +7,7 @@ import io.vertx.mqtt.MqttServer;
 import io.vertx.mqtt.MqttTopicSubscription;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -28,6 +25,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *     |        <--- PUBCOMP ---- (release stored message) <--- PUBCOMP ----                             |
  *     ---------------------------------------------------------------------------------------------------
  *  5. Not support bridge mode & cluster mode.
+ *
+ * @author qianwj
+ * @since  v0.0.1
  */
 public class GatewayVerticle extends AbstractVerticle {
 
@@ -37,6 +37,13 @@ public class GatewayVerticle extends AbstractVerticle {
 
     private final Map<Integer, MqttPublishMessage> messageStore = new ConcurrentHashMap<>();
 
+    /**
+     * Stored published message state whether this message received.
+     * key: message_id
+     * value:
+     *    key:   receiver_client_id
+     *    value: true is received
+     */
     private final Map<Integer, Map<String, Boolean>> messageStateStore = new ConcurrentHashMap<>();
 
     @Override
@@ -73,19 +80,30 @@ public class GatewayVerticle extends AbstractVerticle {
                     messageStore.put(packet.messageId(), packet);
                 }
             });
-            // 确认阶段1： PUBREC  发送端 --> 接收端
-            // 确认阶段2： PUBCOMP 接收端 <-- 发送端
+            endpoint.publishReceivedHandler(messageId -> {
+                var receivedState = messageStateStore.getOrDefault(messageId, new ConcurrentHashMap<>());
+                var received = receivedState.getOrDefault(endpoint.clientIdentifier(), false);
+                if (received) {
+                    endpoint.publishRelease(messageId);
+                    return;
+                }
+                receivedState.put(endpoint.clientIdentifier(), true);
+                endpoint.publishRelease(messageId);
+                messageStateStore.put(messageId, receivedState);
+            });
             endpoint.publishReleaseHandler(messageId -> {
                 var messageState = messageStateStore.get(messageId);
                 if (messageState == null || messageState.isEmpty()) {
-                    return;
+                    endpoint.publishComplete(messageId);
                 }
-                for (Map.Entry<String, Boolean> state : messageState.entrySet()) {
-                    var client = clientStore.get(state.getKey());
-                    if (Objects.nonNull(client)) {
-
-                    }
-                }
+            });
+            endpoint.publishCompletionHandler(messageId -> {
+               var receiveState = messageStateStore.get(messageId);
+               if (receiveState == null || receiveState.isEmpty()) {
+                   endpoint.publishComplete(messageId);
+                   return;
+               }
+               receiveState.remove(endpoint.clientIdentifier());
             });
         }).listen(18083);
     }
