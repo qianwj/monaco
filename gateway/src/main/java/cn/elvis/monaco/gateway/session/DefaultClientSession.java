@@ -1,0 +1,106 @@
+package cn.elvis.monaco.gateway.session;
+
+import cn.elvis.monaco.gateway.entity.PublishMessage;
+import cn.elvis.monaco.gateway.exception.Exceptions;
+import cn.elvis.monaco.gateway.settings.Settings;
+import io.netty.handler.codec.mqtt.MqttProperties;
+import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
+import io.netty.handler.codec.mqtt.MqttQoS;
+import io.vertx.core.Future;
+import io.vertx.mqtt.MqttEndpoint;
+
+import java.time.Instant;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+
+/**
+ * Default client session implementations, wrapped MqttEndpoint instance and maintained state.
+ *
+ * @author qianwj
+ * @since  0.0.1
+ */
+public final class DefaultClientSession implements ClientSession {
+
+    private final AtomicLong lastActiveTime = new AtomicLong(Instant.now().toEpochMilli());
+
+    private final Queue<PublishMessage> processingQueue;
+
+    private final Instant expiredTime;
+
+    private final MqttEndpoint endpoint;
+
+    public DefaultClientSession(MqttEndpoint endpoint,
+                                Settings settings) {
+        this.endpoint = endpoint;
+        this.expiredTime = Instant.now()
+                .plusMillis(sessionExpiryInterval(settings));
+        this.processingQueue = new ArrayBlockingQueue<>(receiveMaximum(settings));
+    }
+
+    @Override
+    public boolean cleanStart() {
+        return endpoint.isCleanSession();
+    }
+
+    @Override
+    public String identifier() {
+        return endpoint.clientIdentifier();
+    }
+
+    @Override
+    public boolean isExpired() {
+        return expiredTime.isAfter(Instant.now());
+    }
+
+    @Override
+    public Instant expiryTime() {
+        return expiredTime;
+    }
+
+    @Override
+    public Future<Void> forward(PublishMessage message) {
+        if (message.qos() == MqttQoS.AT_MOST_ONCE) {
+            return endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain())
+                    .map(i -> null);
+        }
+        if (!processingQueue.offer(message)) {
+            return Future.failedFuture(Exceptions.receiveMaximumExceeded());
+        }
+        return Future.succeededFuture();
+    }
+
+    @Override
+    public void heartbeat() {
+        lastActiveTime.set(Instant.now().toEpochMilli());
+    }
+
+    @Override
+    public void close() {
+        endpoint.close();
+    }
+
+    private int sessionExpiryInterval(Settings settings) {
+        int sessionExpiryInterval = intValue(MqttPropertyType.SESSION_EXPIRY_INTERVAL, settings::defaultSessionExpiryInterval);
+        if (sessionExpiryInterval > settings.maxSessionExpiryInterval()) {
+            return settings.defaultSessionExpiryInterval();
+        }
+        return sessionExpiryInterval;
+    }
+
+    private int receiveMaximum(Settings settings) {
+        return intValue(MqttPropertyType.RECEIVE_MAXIMUM, settings::defaultReceiveMaximum);
+    }
+
+    @SuppressWarnings("unchecked")
+    private int intValue(MqttPropertyType propertyType, Supplier<Integer> defaultValueSupplier) {
+        return Optional.ofNullable(
+                (MqttProperties.MqttProperty<Integer>)
+                        endpoint.connectProperties().getProperty(propertyType.value())
+                )
+                .map(MqttProperties.MqttProperty::value)
+                .orElseGet(defaultValueSupplier);
+    }
+}

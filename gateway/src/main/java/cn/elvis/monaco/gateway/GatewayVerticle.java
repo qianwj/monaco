@@ -1,22 +1,27 @@
 package cn.elvis.monaco.gateway;
 
+import cn.elvis.monaco.gateway.entity.PublishMessage;
+import cn.elvis.monaco.gateway.entity.Subscription;
+import cn.elvis.monaco.gateway.entity.WillMessage;
+import cn.elvis.monaco.gateway.session.*;
+import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
+import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.netty.handler.codec.mqtt.MqttQoS;
+import io.netty.util.internal.StringUtil;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.core.json.Json;
-import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.MqttServer;
 import io.vertx.mqtt.MqttTopicSubscription;
-import io.vertx.mqtt.messages.MqttPublishMessage;
+import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The simplest MQTT Broker
- *  1. Always accept client connect request.
+ *  1. Not support server assigned client identifier.
  *  2. Only subscribe exact topic(exclude wildcard topic & shared topic).
  *  3. Only publish to exact topic.
  *  4. Support qos2 messages.
@@ -34,12 +39,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class GatewayVerticle extends AbstractVerticle {
 
-    private final Map<String, MqttEndpoint> clientStore = new ConcurrentHashMap<>();
-
-    private final Map<String, List<MqttEndpoint>> subscribeStore = new ConcurrentHashMap<>();
-
-    private final Map<Integer, MqttPublishMessage> messageStore = new ConcurrentHashMap<>();
-
     /**
      * Stored published message state whether this message received.
      * key: message_id
@@ -49,43 +48,79 @@ public class GatewayVerticle extends AbstractVerticle {
      */
     static final Map<Integer, Map<String, Boolean>> messageStateStore = new ConcurrentHashMap<>();
 
+    private final ClientSessionManager clientSessionManager;
+
+    private final SubscriberManager subscriberManager;
+
+    private final WillManager willManager;
+
+    public GatewayVerticle(ClientSessionManager clientSessionManager,
+                           SubscriberManager subscriberManager,
+                           WillManager willManager) {
+        this.clientSessionManager = clientSessionManager;
+        this.subscriberManager = subscriberManager;
+        this.willManager = willManager;
+    }
+
     @Override
     public void start() throws Exception {
         final Logger log = LoggerFactory.getLogger(GatewayVerticle.class);
         MqttServer server = MqttServer.create(vertx);
         server.endpointHandler(endpoint -> {
-            endpoint.accept(true)
-                    .publishAutoAck(true);
-            clientStore.put(endpoint.clientIdentifier(), endpoint);
+            endpoint.autoKeepAlive(false);
+            if (StringUtil.isNullOrEmpty(endpoint.clientIdentifier())) {
+                endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED);
+                return;
+            }
+            log.info("New client incoming: " + endpoint.clientIdentifier());
+            ClientSession session = new DefaultClientSession(endpoint, EnvironmentSettings.getInstance());
+            MqttConnectReturnCode returnCode = clientSessionManager.register(session);
+            if (returnCode != MqttConnectReturnCode.CONNECTION_ACCEPTED) {
+                endpoint.reject(returnCode);
+                return;
+            }
+            endpoint.accept(true);
+            log.info("Client session [" + endpoint.clientIdentifier() + "] connected. store will? " + endpoint.will().isWillFlag());
+            if (endpoint.will().isWillFlag()) {
+                WillMessage will = WillMessage.create(endpoint.will());
+                willManager.addWill(session.identifier(), will);
+            }
             endpoint.subscribeHandler(packet -> {
-                for (MqttTopicSubscription topicSubscription : packet.topicSubscriptions()) {
-                    var topicName = topicSubscription.topicName();
-                    var clients = subscribeStore.getOrDefault(topicName, new CopyOnWriteArrayList<>());
-                    clients.add(endpoint);
-                    subscribeStore.put(topicName, clients);
+                clientSessionManager.heartbeat(session.identifier());
+                List<MqttSubAckReasonCode> reasonCodes = new ArrayList<>();
+                for (MqttTopicSubscription mqttTopicSubscription : packet.topicSubscriptions()) {
+                    var subscription = Subscription.of(session, mqttTopicSubscription);
+                    var reasonCode = subscriberManager.subscribe(session, subscription);
+                    reasonCodes.add(reasonCode);
                 }
+                endpoint.subscribeAcknowledge(packet.messageId(), reasonCodes, packet.properties());
             });
             endpoint.publishHandler(packet -> {
+                clientSessionManager.heartbeat(session.identifier());
                 log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
                 var topicName = packet.topicName();
                 var qos = packet.qosLevel();
-                var clients = subscribeStore.getOrDefault(topicName, new ArrayList<>());
                 if (qos == MqttQoS.EXACTLY_ONCE) {
                     endpoint.publishReceived(packet.messageId());
                 }
-                for (MqttEndpoint client : clients) {
-                    client.publish(topicName, packet.payload(), qos, packet.isDup(), packet.isRetain(), packet.messageId(), packet.properties());
-                }
-                if (qos == MqttQoS.EXACTLY_ONCE) {
-                    var clientState = new ConcurrentHashMap<String, Boolean>();
-                    for (MqttEndpoint client : clients) {
-                        clientState.put(client.clientIdentifier(), false);
+
+                PublishMessage message = PublishMessage.of(packet);
+                var qos2messageClientState = new ConcurrentHashMap<String, Boolean>();
+                subscriberManager.search(topicName, subscription -> {
+                    subscription.subscriber().forward(message);
+                    if (qos == MqttQoS.EXACTLY_ONCE) {
+                        qos2messageClientState.put(subscription.sessionId(), false);
                     }
-                    messageStateStore.put(packet.messageId(), clientState);
-                    messageStore.put(packet.messageId(), packet);
+                });
+                if (qos == MqttQoS.AT_LEAST_ONCE) {
+                    messageStateStore.put(packet.messageId(), qos2messageClientState);
+                }
+                if (qos == MqttQoS.AT_MOST_ONCE || qos == MqttQoS.AT_LEAST_ONCE) {
+                    endpoint.publishAcknowledge(packet.messageId());
                 }
             });
             endpoint.publishReceivedHandler(messageId -> {
+                clientSessionManager.heartbeat(session.identifier());
                 log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + messageId);
                 var receivedState = messageStateStore.getOrDefault(messageId, new ConcurrentHashMap<>());
                 var received = receivedState.getOrDefault(endpoint.clientIdentifier(), false);
@@ -98,6 +133,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 messageStateStore.put(messageId, receivedState);
             });
             endpoint.publishReleaseHandler(messageId -> {
+                clientSessionManager.heartbeat(session.identifier());
                 log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREL packet: " + messageId);
                 var messageState = messageStateStore.get(messageId);
                 if (messageState == null || messageState.isEmpty()) {
@@ -105,6 +141,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 }
             });
             endpoint.publishCompletionHandler(messageId -> {
+                clientSessionManager.heartbeat(session.identifier());
                 log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
                 var receiveState = messageStateStore.get(messageId);
                 if (receiveState == null || receiveState.isEmpty()) {
@@ -113,6 +150,14 @@ public class GatewayVerticle extends AbstractVerticle {
                     return;
                 }
                 receiveState.remove(endpoint.clientIdentifier());
+            });
+            endpoint.pingHandler(v -> {
+                clientSessionManager.heartbeat(session.identifier());
+                endpoint.pong();
+            });
+            endpoint.closeHandler(v -> {
+                clientSessionManager.unregister(session.identifier());
+                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet: " + endpoint);
             });
         }).listen(18083);
         log.info("broker started");

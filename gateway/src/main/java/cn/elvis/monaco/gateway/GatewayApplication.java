@@ -1,13 +1,21 @@
 package cn.elvis.monaco.gateway;
 
+import cn.elvis.monaco.gateway.session.*;
+import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 
 public class GatewayApplication {
 
     public static void main(String[] args) {
-        var vertx = Vertx.vertx();
-        vertx.deployVerticle(GatewayVerticle.class, new DeploymentOptions().setInstances(1));
-        vertx.deployVerticle(MetricsVerticle.class, new DeploymentOptions().setInstances(1));
+        final Vertx vertx = Vertx.vertx();
+        final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(
+                EnvironmentSettings.getInstance(),
+                vertx
+        );
+        final SubscriberManager subscriberManager = new DefaultSubscriberManager(vertx.eventBus());
+        final WillManager willManager = new DefaultWillManager(vertx.eventBus());
+        vertx.deployVerticle(() -> new GatewayVerticle(clientSessionManager, subscriberManager, willManager), new DeploymentOptions().setInstances(1));
+        vertx.deployVerticle(() -> new MetricsVerticle(clientSessionManager), new DeploymentOptions().setInstances(1));
     }
 }
