@@ -157,7 +157,7 @@ public class GatewayVerticle extends AbstractVerticle {
             });
             endpoint.closeHandler(v -> {
                 clientSessionManager.unregister(session.identifier());
-                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet: " + endpoint);
+                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
             });
         }).listen(18083);
         log.info("broker started");
