@@ -1,17 +1,19 @@
 package cn.elvis.monaco.extension;
 
 import cn.elvis.monaco.common.entity.AuthenticateResult;
+import cn.elvis.monaco.common.session.Authenticator;
 import cn.elvis.monaco.extension.dsl.*;
 import io.vertx.core.Future;
 
-public non-sealed class Authenticator extends Extension {
+public non-sealed class ExtendAuthenticator extends Extension implements Authenticator {
 
     private final ExtensionManager manager;
 
-    public Authenticator(ExtensionManager manager) {
+    public ExtendAuthenticator(ExtensionManager manager) {
         this.manager = manager;
     }
 
+    @Override
     public Future<AuthenticateResult> authenticate(String clientId, String username, String password) {
         return useRequestBuilder((builder) -> {
             var offset = AuthenticateRequest.createAuthenticateRequest(

@@ -12,6 +12,8 @@ public class TransportConfiguration {
 
     private int instances;
 
+    private String websocketPath;
+
     private String serverKeyPath;
 
     private String serverCertPath;
@@ -32,6 +34,14 @@ public class TransportConfiguration {
     public TransportConfiguration setPort(int port) {
         this.port = port;
         return this;
+    }
+
+    public String getWebsocketPath() {
+        return websocketPath;
+    }
+
+    public void setWebsocketPath(String websocketPath) {
+        this.websocketPath = websocketPath;
     }
 
     public int getInstances() {

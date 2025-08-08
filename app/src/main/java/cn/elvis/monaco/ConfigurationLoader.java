@@ -1,5 +1,6 @@
 package cn.elvis.monaco;
 
+import cn.elvis.monaco.common.ChannelKeys;
 import io.vertx.config.ConfigRetriever;
 import io.vertx.config.ConfigRetrieverOptions;
 import io.vertx.config.ConfigStoreOptions;

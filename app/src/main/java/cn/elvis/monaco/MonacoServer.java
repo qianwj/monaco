@@ -1,9 +1,18 @@
 package cn.elvis.monaco;
 
+import cn.elvis.monaco.common.session.Authenticator;
+import cn.elvis.monaco.configuration.AuthConfiguration;
 import cn.elvis.monaco.configuration.MetricsConfiguration;
+import cn.elvis.monaco.configuration.SessionConfiguration;
 import cn.elvis.monaco.configuration.TransportConfiguration;
+import cn.elvis.monaco.extension.ExtendAuthenticator;
+import cn.elvis.monaco.extension.ExtensionManager;
 import cn.elvis.monaco.extension.ExtensionServer;
 import cn.elvis.monaco.logging.LoggerInitializer;
+import cn.elvis.monaco.session.ClientIdGenerator;
+import cn.elvis.monaco.session.ClientIdValidator;
+import cn.elvis.monaco.session.SessionManager;
+import cn.elvis.monaco.session.authenticate.ConfigurableAuthenticator;
 import cn.elvis.monaco.transport.MqttTransport;
 import cn.elvis.monaco.transport.TransportType;
 import io.vertx.core.*;
@@ -27,6 +36,10 @@ public final class MonacoServer {
 
     private final ConfigurationLoader configurationLoader;
 
+    private SessionManager sessionManager;
+
+    private Authenticator authenticator;
+
     public MonacoServer() {
         System.setProperty(
                 "vertx.logger-delegate-factory-class-name",
@@ -44,6 +57,8 @@ public final class MonacoServer {
         createVertxInstance(config).compose(vertx -> {
             Runtime.getRuntime().addShutdownHook(new Thread(vertx::close));
             try {
+                initAuthenticator(config);
+                initSessionManager(config);
                 startExtensionServer(vertx, config);
                 startMqttTransport(vertx, config);
                 configurationLoader.watch(vertx);
@@ -99,6 +114,7 @@ public final class MonacoServer {
     private void startMqttTransport(Vertx vertx, JsonObject config) {
         JsonObject transportConfig = config.getJsonObject("transport");
         long startTime = config.getLong("startTime", System.currentTimeMillis());
+        var useVirtualThread = transportConfig.getBoolean("useVirtualThread", false);
         var futures = new ArrayList<Future<String>>();
         for (TransportType type : TransportType.values()) {
             var transportKey = type.name().toLowerCase();
@@ -107,9 +123,14 @@ public final class MonacoServer {
                     var serverConfig = transportConfig.getJsonObject(transportKey)
                             .mapTo(TransportConfiguration.class).setType(type);
                     var deploymentOptions = new DeploymentOptions()
-                            .setInstances(serverConfig.getInstances())
-                            .setThreadingModel(ThreadingModel.VIRTUAL_THREAD);
-                    var deployResult = vertx.deployVerticle(() -> new MqttTransport(serverConfig), deploymentOptions);
+                            .setInstances(serverConfig.getInstances());
+                    if (useVirtualThread) {
+                        deploymentOptions.setThreadingModel(ThreadingModel.VIRTUAL_THREAD);
+                    }
+                    var deployResult = vertx.deployVerticle(
+                            () -> new MqttTransport(serverConfig, authenticator, sessionManager),
+                            deploymentOptions
+                    );
                     futures.add(deployResult);
                 } catch (Exception e) {
                     log.error("Deploying transport server failed: ", e);
@@ -118,6 +139,7 @@ public final class MonacoServer {
             }
         }
         Future.<String>all(futures).onComplete(unused -> {
+            vertx.deployVerticle(sessionManager, new DeploymentOptions().setInstances(1));
             log.info("MonacoServer started. Time used: {}ms", System.currentTimeMillis() - startTime);
         });
     }
@@ -137,5 +159,26 @@ public final class MonacoServer {
                         .setEnabled(metricsConfig.isEnabled())
                         .setJvmMetricsEnabled(true)
         );
+    }
+
+    private void initSessionManager(JsonObject config) {
+        SessionConfiguration sessionConfig = config.getJsonObject("session").mapTo(SessionConfiguration.class);
+        sessionManager = new SessionManager(
+                sessionConfig,
+                ClientIdGenerator.defaultGenerator(),
+                ClientIdValidator.defaultValidator(50)
+        );
+    }
+
+    private Authenticator initAuthenticator(JsonObject config, ExtensionManager extensionManager) {
+        AuthConfiguration authenticationConfig = Optional
+                .ofNullable(config.getJsonObject("authentication").mapTo(AuthConfiguration.class))
+                .orElse(AuthConfiguration.defaultConfig());
+        String mode = authenticationConfig.getMode().toUpperCase();
+        return switch (mode) {
+            case "ANONYMOUS" -> Authenticator.AllowAnonymousAuthenticator.getInstance();
+            case "EXTENSION" -> new ExtendAuthenticator(extensionManager);
+            default -> new ConfigurableAuthenticator(authenticationConfig);
+        };
     }
 }

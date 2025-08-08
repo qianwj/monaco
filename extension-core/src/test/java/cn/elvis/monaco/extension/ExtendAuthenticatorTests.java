@@ -5,7 +5,7 @@ import cn.elvis.monaco.extension.dsl.Metadata;
 import com.google.flatbuffers.FlatBufferBuilder;
 import org.junit.jupiter.api.Test;
 
-public class AuthenticatorTests {
+public class ExtendAuthenticatorTests {
 
     @Test
     public void testMessage() {

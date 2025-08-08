@@ -47,4 +47,11 @@ public final class AuthConfiguration {
         this.rootPassword = rootPassword;
         return this;
     }
+
+    public static AuthConfiguration defaultConfig() {
+        return new AuthConfiguration()
+                .setMode("default")
+                .setRootUsername("monaco")
+                .setRootPassword("monaco");
+    }
 }
