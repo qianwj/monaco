@@ -3,6 +3,8 @@ package cn.elvis.monaco.gateway.session;
 import cn.elvis.monaco.gateway.entity.Subscription;
 import cn.elvis.monaco.gateway.listener.WillPublishListener;
 import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.internal.logging.Logger;
+import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
 import java.util.ArrayList;
@@ -19,6 +21,8 @@ import java.util.function.Consumer;
  */
 public final class DefaultSubscriberManager implements SubscriberManager {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultSubscriberManager.class);
+
     private final Map<String, List<Subscription>> store = new ConcurrentHashMap<>();
 
     private final WillPublishListener willPublishListener;
@@ -26,6 +30,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     public DefaultSubscriberManager(EventBus eventBus) {
         this.willPublishListener = new WillPublishListener(eventBus, will -> {
             if (will.expired()) {
+                log.info("skip publish will message cause expired.");
                 return;
             }
             var msg = will.body();
