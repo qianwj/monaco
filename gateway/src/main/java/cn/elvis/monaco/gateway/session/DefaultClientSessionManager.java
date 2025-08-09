@@ -54,6 +54,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         }
         if (store.size() + 1 <= settings.maximumSessionCount()) {
             store.put(clientSession.identifier(), clientSession);
+            clientSession.connect();
             log.info("Client session [" + clientSession.identifier() + "] registered. expiry time: " + clientSession.expiryTime());
             return MqttConnectReturnCode.CONNECTION_ACCEPTED;
         }

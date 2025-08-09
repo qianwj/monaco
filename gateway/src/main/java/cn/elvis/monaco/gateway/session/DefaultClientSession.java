@@ -7,9 +7,12 @@ import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.Future;
+import io.vertx.core.internal.logging.Logger;
+import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -24,6 +27,8 @@ import java.util.function.Supplier;
  */
 public final class DefaultClientSession implements ClientSession {
 
+    private static final Logger log = LoggerFactory.getLogger(DefaultClientSession.class);
+
     private final AtomicLong lastActiveTime = new AtomicLong(Instant.now().toEpochMilli());
 
     private final Queue<PublishMessage> processingQueue;
@@ -32,12 +37,37 @@ public final class DefaultClientSession implements ClientSession {
 
     private final MqttEndpoint endpoint;
 
+    private volatile boolean closed;
+
     public DefaultClientSession(MqttEndpoint endpoint,
                                 Settings settings) {
         this.endpoint = endpoint;
         this.expiredTime = Instant.now()
                 .plusMillis(sessionExpiryInterval(settings));
         this.processingQueue = new ArrayBlockingQueue<>(receiveMaximum(settings));
+    }
+
+    public void connect() {
+        endpoint.accept(true);
+        Thread.ofVirtual().name("client-queue-worker-" + endpoint.clientIdentifier())
+                .uncaughtExceptionHandler((t, e) ->
+                        log.error("[" + t.getName() + "] Unexpected exception", e))
+                .start(() -> {
+                    while (!closed) {
+                        PublishMessage message = processingQueue.poll();
+                        if (Objects.nonNull(message)) {
+                            endpoint.publish(
+                                    message.topic(),
+                                    message.payload(),
+                                    message.qos(),
+                                    message.duplicate(),
+                                    message.retain(),
+                                    message.packetId(),
+                                    message.properties()
+                            );
+                        }
+                    }
+                });
     }
 
     @Override
@@ -79,6 +109,7 @@ public final class DefaultClientSession implements ClientSession {
 
     @Override
     public void close() {
+        closed = true;
         endpoint.close();
     }
 

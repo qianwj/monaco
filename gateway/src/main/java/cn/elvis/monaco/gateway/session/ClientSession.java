@@ -12,6 +12,8 @@ import java.time.Instant;
  */
 public interface ClientSession {
 
+    void connect();
+
     /**
      * Method that return current client identifier.
      * @return Client identifier

@@ -79,7 +79,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 endpoint.reject(returnCode);
                 return;
             }
-            endpoint.accept(true);
+
             log.info("Client session [" + endpoint.clientIdentifier() + "] connected. store will? " + endpoint.will().isWillFlag());
             if (endpoint.will().isWillFlag()) {
                 WillMessage will = WillMessage.create(endpoint.will());
