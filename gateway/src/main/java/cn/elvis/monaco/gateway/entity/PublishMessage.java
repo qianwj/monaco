@@ -1,5 +1,6 @@
 package cn.elvis.monaco.gateway.entity;
 
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.mqtt.MqttWill;
@@ -13,6 +14,8 @@ import io.vertx.mqtt.messages.MqttPublishMessage;
  */
 public interface PublishMessage {
 
+    int packetId();
+
     MqttQoS qos();
 
     String topic();
@@ -22,6 +25,8 @@ public interface PublishMessage {
     boolean duplicate();
 
     boolean retain();
+
+    MqttProperties properties();
 
     static PublishMessage of(MqttPublishMessage mqttPublishMessage) {
         return new PublishMessageImpl(mqttPublishMessage);
