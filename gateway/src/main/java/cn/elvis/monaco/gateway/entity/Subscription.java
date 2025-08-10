@@ -2,6 +2,7 @@ package cn.elvis.monaco.gateway.entity;
 
 import cn.elvis.monaco.gateway.session.ClientSession;
 import io.netty.handler.codec.mqtt.MqttQoS;
+import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
 import io.vertx.mqtt.MqttTopicSubscription;
 
 /**
@@ -17,6 +18,12 @@ public interface Subscription {
     MqttQoS qos();
 
     String sessionId();
+
+    boolean noLocal();
+
+    MqttSubscriptionOption.RetainedHandlingPolicy retainedHandlingPolicy();
+
+    boolean retainAsPublished();
 
     ClientSession subscriber();
 

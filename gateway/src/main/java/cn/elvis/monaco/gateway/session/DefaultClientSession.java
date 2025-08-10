@@ -1,6 +1,7 @@
 package cn.elvis.monaco.gateway.session;
 
 import cn.elvis.monaco.gateway.entity.PublishMessage;
+import cn.elvis.monaco.gateway.entity.Subscription;
 import cn.elvis.monaco.gateway.exception.Exceptions;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttProperties;
@@ -12,10 +13,12 @@ import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -30,6 +33,8 @@ public final class DefaultClientSession implements ClientSession {
     private static final Logger log = LoggerFactory.getLogger(DefaultClientSession.class);
 
     private final AtomicLong lastActiveTime = new AtomicLong(Instant.now().toEpochMilli());
+
+    private final List<Subscription> subscriptions = new CopyOnWriteArrayList<>();
 
     private final Queue<PublishMessage> processingQueue;
 
@@ -50,8 +55,10 @@ public final class DefaultClientSession implements ClientSession {
     public void connect() {
         endpoint.accept(true);
         Thread.ofVirtual().name("client-queue-worker-" + endpoint.clientIdentifier())
-                .uncaughtExceptionHandler((t, e) ->
-                        log.error("[" + t.getName() + "] Unexpected exception", e))
+                .uncaughtExceptionHandler((t, e) -> {
+                        log.error("[" + t.getName() + "] Unexpected exception", e);
+                        e.printStackTrace();
+                })
                 .start(() -> {
                     while (!closed) {
                         PublishMessage message = processingQueue.poll();
@@ -65,6 +72,7 @@ public final class DefaultClientSession implements ClientSession {
                                     message.packetId(),
                                     message.properties()
                             );
+                            heartbeat();
                         }
                     }
                 });
@@ -133,5 +141,25 @@ public final class DefaultClientSession implements ClientSession {
                 )
                 .map(MqttProperties.MqttProperty::value)
                 .orElseGet(defaultValueSupplier);
+    }
+
+    @Override
+    public void subscribe(Subscription subscription) {
+        subscriptions.add(subscription);
+    }
+
+    @Override
+    public void unsubscribe(String topicFilter) {
+        subscriptions.removeIf(subscription -> subscription.topicFilter().equals(topicFilter));
+    }
+
+    @Override
+    public boolean isReSubscribed(String topicFilter) {
+        for (Subscription subscription : subscriptions) {
+            if (Objects.equals(topicFilter, subscription.topicFilter())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

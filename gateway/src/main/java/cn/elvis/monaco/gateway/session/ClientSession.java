@@ -10,7 +10,7 @@ import java.time.Instant;
  * @author qianwj
  * @since  0.0.1
  */
-public interface ClientSession {
+public interface ClientSession extends Subscriber {
 
     void connect();
 

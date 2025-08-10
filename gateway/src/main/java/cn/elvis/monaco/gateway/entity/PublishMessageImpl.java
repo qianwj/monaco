@@ -14,6 +14,18 @@ public final class PublishMessageImpl implements PublishMessage {
         this.source = source;
     }
 
+    PublishMessageImpl(PublishMessage source, boolean duplicate, boolean retain) {
+        this.source = MqttPublishMessage.create(
+                source.packetId(),
+                source.qos(),
+                duplicate,
+                retain,
+                source.topic(),
+                source.payload(),
+                source.properties()
+        );
+    }
+
     PublishMessageImpl(int packetId, MqttWill will) {
         this.source = MqttPublishMessage.create(
                 packetId,
@@ -21,7 +33,8 @@ public final class PublishMessageImpl implements PublishMessage {
                 false,
                 will.isWillRetain(),
                 will.getWillTopic(),
-                will.getWillMessage()
+                will.getWillMessage(),
+                will.getWillProperties()
         );
     }
 
@@ -58,5 +71,10 @@ public final class PublishMessageImpl implements PublishMessage {
     @Override
     public MqttProperties properties() {
         return source.properties();
+    }
+
+    @Override
+    public PublishMessage setRetain(boolean retain) {
+        return new PublishMessageImpl(this, source.isDup(), retain);
     }
 }

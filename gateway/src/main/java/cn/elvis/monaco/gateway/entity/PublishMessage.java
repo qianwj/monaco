@@ -28,6 +28,8 @@ public interface PublishMessage {
 
     MqttProperties properties();
 
+    PublishMessage setRetain(boolean retain);
+
     static PublishMessage of(MqttPublishMessage mqttPublishMessage) {
         return new PublishMessageImpl(mqttPublishMessage);
     }

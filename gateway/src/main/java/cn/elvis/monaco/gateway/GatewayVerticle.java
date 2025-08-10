@@ -2,6 +2,7 @@ package cn.elvis.monaco.gateway;
 
 import cn.elvis.monaco.gateway.entity.PublishMessage;
 import cn.elvis.monaco.gateway.entity.Subscription;
+import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
 import cn.elvis.monaco.gateway.entity.WillMessage;
 import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
@@ -12,6 +13,7 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonObject;
 import io.vertx.mqtt.MqttServer;
 import io.vertx.mqtt.MqttTopicSubscription;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
@@ -54,12 +56,16 @@ public class GatewayVerticle extends AbstractVerticle {
 
     private final WillManager willManager;
 
+    private final RetainMessageManager retainMessageManager;
+
     public GatewayVerticle(ClientSessionManager clientSessionManager,
                            SubscriberManager subscriberManager,
-                           WillManager willManager) {
+                           WillManager willManager,
+                           RetainMessageManager retainMessageManager) {
         this.clientSessionManager = clientSessionManager;
         this.subscriberManager = subscriberManager;
         this.willManager = willManager;
+        this.retainMessageManager = retainMessageManager;
     }
 
     @Override
@@ -86,6 +92,7 @@ public class GatewayVerticle extends AbstractVerticle {
                 willManager.addWill(session.identifier(), will);
             }
             endpoint.subscribeHandler(packet -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive SUBSCRIBE packet: " + packet);
                 clientSessionManager.heartbeat(session.identifier());
                 List<MqttSubAckReasonCode> reasonCodes = new ArrayList<>();
                 for (MqttTopicSubscription mqttTopicSubscription : packet.topicSubscriptions()) {
@@ -95,16 +102,28 @@ public class GatewayVerticle extends AbstractVerticle {
                 }
                 endpoint.subscribeAcknowledge(packet.messageId(), reasonCodes, packet.properties());
             });
+            endpoint.unsubscribeHandler(packet -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive UNSUB packet: " + packet);
+                clientSessionManager.heartbeat(session.identifier());
+                var ackCodes = packet.topics()
+                        .stream()
+                        .map(topic -> subscriberManager.unsubscribe(session, topic))
+                        .toList();
+                endpoint.unsubscribeAcknowledge(packet.messageId(), ackCodes, packet.properties());
+            });
             endpoint.publishHandler(packet -> {
                 clientSessionManager.heartbeat(session.identifier());
                 log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
+                PublishMessage message = PublishMessage.of(packet);
+                if (packet.isRetain()) {
+                    retainMessageManager.addMessage(message);
+                    return;
+                }
                 var topicName = packet.topicName();
                 var qos = packet.qosLevel();
                 if (qos == MqttQoS.EXACTLY_ONCE) {
                     endpoint.publishReceived(packet.messageId());
                 }
-
-                PublishMessage message = PublishMessage.of(packet);
                 var qos2messageClientState = new ConcurrentHashMap<String, Boolean>();
                 subscriberManager.search(topicName, subscription -> {
                     subscription.subscriber().forward(message);

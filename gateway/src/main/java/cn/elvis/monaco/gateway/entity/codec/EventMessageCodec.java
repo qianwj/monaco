@@ -1,24 +1,39 @@
 package cn.elvis.monaco.gateway.entity.codec;
 
+import cn.elvis.monaco.gateway.entity.PublishMessageImpl;
+import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
 import cn.elvis.monaco.gateway.entity.WillMessageImpl;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.MessageCodec;
 
 import java.io.*;
 
 /**
- * Will Message Codec, encode & decode will message that use in vert.x event bus.
+ * Event Message Codec, encode & decode event message that use in vert.x event bus.
  *
  * @author qianwj
  * @since  0.0.1
  */
-public final class WillMessageCodec implements MessageCodec<WillMessageImpl, WillMessageImpl> {
+public final class EventMessageCodec<T> implements MessageCodec<T, T> {
+
+    private final Class<T> clazz;
+
+    public static void register(Vertx vertx) {
+        vertx.eventBus().registerDefaultCodec(WillMessageImpl.class, new EventMessageCodec<>(WillMessageImpl.class));
+        vertx.eventBus().registerDefaultCodec(PublishMessageImpl.class, new EventMessageCodec<>(PublishMessageImpl.class));
+        vertx.eventBus().registerDefaultCodec(SubscriptionExtend.class, new EventMessageCodec<>(SubscriptionExtend.class));
+    }
+
+    EventMessageCodec(Class<T> clazz) {
+        this.clazz = clazz;
+    }
 
     @Override
-    public void encodeToWire(Buffer buffer, WillMessageImpl willMessage) {
+    public void encodeToWire(Buffer buffer, T event) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            out.writeObject(willMessage);
+            out.writeObject(event);
             out.flush();
             byte[] serialized = bos.toByteArray();
             buffer.appendInt(serialized.length);
@@ -29,26 +44,27 @@ public final class WillMessageCodec implements MessageCodec<WillMessageImpl, Wil
     }
 
     @Override
-    public WillMessageImpl decodeFromWire(int pos, Buffer buffer) {
+    @SuppressWarnings("unchecked")
+    public T decodeFromWire(int pos, Buffer buffer) {
         int _pos = pos;
         int length = buffer.getInt(_pos);
         // Jump 4 because getInt() == 4 bytes
         byte[] serialized = buffer.getBytes(_pos += 4, _pos + length);
         try (ByteArrayInputStream bis = new ByteArrayInputStream(serialized); ObjectInputStream ois = new ObjectInputStream(bis)) {
-            return (WillMessageImpl) ois.readObject();
+            return (T) ois.readObject();
         } catch (IOException | ClassNotFoundException e) {
             throw new IllegalStateException("decode will message error", e);
         }
     }
 
     @Override
-    public WillMessageImpl transform(WillMessageImpl willMessage) {
-        return willMessage;
+    public T transform(T event) {
+        return event;
     }
 
     @Override
     public String name() {
-        return this.getClass().getCanonicalName();
+        return clazz.getCanonicalName() + "Codec";
     }
 
     @Override
