@@ -6,6 +6,12 @@ import io.vertx.mqtt.MqttWill;
 import java.time.Duration;
 import java.util.Optional;
 
+/**
+ * Will message implementation
+ *
+ * @author qianwj
+ * @since  0.0.1
+ */
 public final class WillMessageImpl implements WillMessage {
 
     private final PublishMessage body;
