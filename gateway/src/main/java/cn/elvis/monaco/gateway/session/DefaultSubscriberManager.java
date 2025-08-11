@@ -38,7 +38,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     public DefaultSubscriberManager(EventBus eventBus) {
         this.eventBus = eventBus;
         this.willPublishListener = new WillPublishListener(eventBus, will -> {
-            if (will.expired()) {
+            if (will.body().expired()) {
                 log.info("skip publish will message cause expired.");
                 return;
             }

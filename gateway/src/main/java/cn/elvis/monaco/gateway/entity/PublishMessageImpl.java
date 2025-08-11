@@ -6,12 +6,25 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.mqtt.MqttWill;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 
+import java.time.Instant;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Publish message implementation, wrapped MqttPublishMessage
+ *
+ * @author qianwj
+ * @since  0.0.1
+ */
 public final class PublishMessageImpl implements PublishMessage {
 
     private final MqttPublishMessage source;
 
+    private final Instant expiryTime;
+
     PublishMessageImpl(MqttPublishMessage source) {
         this.source = source;
+        this.expiryTime = expiryTime(source.properties());
     }
 
     PublishMessageImpl(PublishMessage source, boolean duplicate, boolean retain) {
@@ -24,6 +37,7 @@ public final class PublishMessageImpl implements PublishMessage {
                 source.payload(),
                 source.properties()
         );
+        this.expiryTime = expiryTime(source.properties());
     }
 
     PublishMessageImpl(int packetId, MqttWill will) {
@@ -36,6 +50,7 @@ public final class PublishMessageImpl implements PublishMessage {
                 will.getWillMessage(),
                 will.getWillProperties()
         );
+        this.expiryTime = expiryTime(will.getWillProperties());
     }
 
     @Override
@@ -69,6 +84,11 @@ public final class PublishMessageImpl implements PublishMessage {
     }
 
     @Override
+    public boolean expired() {
+        return Objects.nonNull(expiryTime) && expiryTime.isAfter(Instant.now());
+    }
+
+    @Override
     public MqttProperties properties() {
         return source.properties();
     }
@@ -76,5 +96,14 @@ public final class PublishMessageImpl implements PublishMessage {
     @Override
     public PublishMessage setRetain(boolean retain) {
         return new PublishMessageImpl(this, source.isDup(), retain);
+    }
+
+    private Instant expiryTime(MqttProperties properties) {
+        return Optional.ofNullable(
+                        properties.getProperty(MqttProperties.MqttPropertyType.PUBLICATION_EXPIRY_INTERVAL.value())
+                )
+                .map(MqttProperties.MqttProperty::value)
+                .map(v -> Instant.now().plusMillis((int) v))
+                .orElse(null);
     }
 }

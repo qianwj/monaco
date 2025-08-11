@@ -35,12 +35,8 @@ public final class DefaultWillManager implements WillManager {
                             store.remove(clientId);
                             return;
                         }
-                        if (!willMessage.expired()) {
-                            try {
-                                eventBus.publish(ChannelKeys.WILL_MESSAGE_PUBLISH_CHANNEL, willMessage);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
+                        if (!willMessage.body().expired()) {
+                            eventBus.publish(ChannelKeys.WILL_MESSAGE_PUBLISH_CHANNEL, willMessage);
                             store.remove(clientId);
                         }
                     }, willMessage.delayInterval().getSeconds(), TimeUnit.SECONDS)));

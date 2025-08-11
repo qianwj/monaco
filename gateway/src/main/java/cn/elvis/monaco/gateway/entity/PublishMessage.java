@@ -26,6 +26,8 @@ public interface PublishMessage {
 
     boolean retain();
 
+    boolean expired();
+
     MqttProperties properties();
 
     PublishMessage setRetain(boolean retain);
