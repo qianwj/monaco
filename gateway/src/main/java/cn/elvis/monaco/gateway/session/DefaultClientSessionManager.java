@@ -1,6 +1,7 @@
 package cn.elvis.monaco.gateway.session;
 
 import cn.elvis.monaco.gateway.ChannelKeys;
+import cn.elvis.monaco.gateway.entity.events.ClientSessionClose;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.vertx.core.Vertx;
@@ -62,9 +63,9 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     }
 
     @Override
-    public void unregister(String clientId) {
+    public void unregister(String clientId, boolean normalClosed) {
         store.remove(clientId);
-        eventBus.publish(ChannelKeys.CLIENT_SESSION_CLOSE, clientId);
+        eventBus.publish(ChannelKeys.CLIENT_SESSION_CLOSE, new ClientSessionClose(clientId, normalClosed));
     }
 
     @Override

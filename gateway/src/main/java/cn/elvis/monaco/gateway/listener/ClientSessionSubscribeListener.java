@@ -1,7 +1,7 @@
 package cn.elvis.monaco.gateway.listener;
 
 import cn.elvis.monaco.gateway.ChannelKeys;
-import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
+import cn.elvis.monaco.gateway.entity.events.SubscriptionExtend;
 import io.vertx.core.eventbus.EventBus;
 
 import java.util.function.Consumer;

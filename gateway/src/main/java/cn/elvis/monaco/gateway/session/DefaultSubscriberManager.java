@@ -2,7 +2,7 @@ package cn.elvis.monaco.gateway.session;
 
 import cn.elvis.monaco.gateway.ChannelKeys;
 import cn.elvis.monaco.gateway.entity.Subscription;
-import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
+import cn.elvis.monaco.gateway.entity.events.SubscriptionExtend;
 import cn.elvis.monaco.gateway.listener.SystemPublishListener;
 import cn.elvis.monaco.gateway.listener.WillPublishListener;
 import io.vertx.core.eventbus.EventBus;

@@ -1,4 +1,4 @@
-package cn.elvis.monaco.gateway.entity;
+package cn.elvis.monaco.gateway.entity.events;
 
 import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
 

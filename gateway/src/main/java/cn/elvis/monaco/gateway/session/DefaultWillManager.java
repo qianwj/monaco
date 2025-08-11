@@ -27,8 +27,12 @@ public final class DefaultWillManager implements WillManager {
 
     public DefaultWillManager(EventBus eventBus) {
         timer.start();
-        this.clientSessionCloseListener = new ClientSessionCloseListener(eventBus, clientId ->
-                Optional.ofNullable(store.get(clientId)).ifPresent(willMessage ->
+        this.clientSessionCloseListener = new ClientSessionCloseListener(eventBus, event -> {
+            var clientId = event.clientId();
+            if (event.normalClosed()) {
+                return;
+            }
+            Optional.ofNullable(store.get(clientId)).ifPresent(willMessage ->
                     timer.newTimeout(timeout -> {
                         if (timeout.isCancelled()) {
                             log.info("Timer cancelled");
@@ -39,7 +43,8 @@ public final class DefaultWillManager implements WillManager {
                             eventBus.publish(ChannelKeys.WILL_MESSAGE_PUBLISH_CHANNEL, willMessage);
                             store.remove(clientId);
                         }
-                    }, willMessage.delayInterval().getSeconds(), TimeUnit.SECONDS)));
+                    }, willMessage.delayInterval().getSeconds(), TimeUnit.SECONDS));
+        });
     }
 
     @Override

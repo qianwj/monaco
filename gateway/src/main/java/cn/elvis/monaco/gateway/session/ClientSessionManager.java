@@ -28,7 +28,7 @@ public interface ClientSessionManager {
      * that client connection closed.
      * @param clientId: client identifier
      */
-    void unregister(String clientId);
+    void unregister(String clientId, boolean normalClosed);
 
     /**
      * client heartbeat, refresh last active time of this client

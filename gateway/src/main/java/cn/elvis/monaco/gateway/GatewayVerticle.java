@@ -2,7 +2,6 @@ package cn.elvis.monaco.gateway;
 
 import cn.elvis.monaco.gateway.entity.PublishMessage;
 import cn.elvis.monaco.gateway.entity.Subscription;
-import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
 import cn.elvis.monaco.gateway.entity.WillMessage;
 import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
@@ -13,9 +12,9 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.core.json.Json;
-import io.vertx.core.json.JsonObject;
 import io.vertx.mqtt.MqttServer;
 import io.vertx.mqtt.MqttTopicSubscription;
+import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
 import java.util.*;
@@ -174,9 +173,17 @@ public class GatewayVerticle extends AbstractVerticle {
                 clientSessionManager.heartbeat(session.identifier());
                 endpoint.pong();
             });
-            endpoint.closeHandler(v -> {
-                clientSessionManager.unregister(session.identifier());
-                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
+//            endpoint.closeHandler(v -> {
+//                clientSessionManager.unregister(session.identifier(), false);
+//                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
+//            });
+            endpoint.disconnectMessageHandler(packet -> {
+                log.info("client[" + endpoint.clientIdentifier() + "] receive DISCONNECT packet: " + packet);
+                if (packet.code() == MqttDisconnectReasonCode.NORMAL) {
+                    clientSessionManager.unregister(session.identifier(), true);
+                    return;
+                }
+                clientSessionManager.unregister(session.identifier(), false);
             });
         }).listen(18083);
         log.info("broker started");

@@ -1,7 +1,7 @@
 package cn.elvis.monaco.gateway.entity.codec;
 
 import cn.elvis.monaco.gateway.entity.PublishMessageImpl;
-import cn.elvis.monaco.gateway.entity.SubscriptionExtend;
+import cn.elvis.monaco.gateway.entity.events.SubscriptionExtend;
 import cn.elvis.monaco.gateway.entity.WillMessageImpl;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
