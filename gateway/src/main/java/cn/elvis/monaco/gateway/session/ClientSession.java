@@ -1,7 +1,9 @@
 package cn.elvis.monaco.gateway.session;
 
 import cn.elvis.monaco.gateway.entity.PublishMessage;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.vertx.core.Future;
+import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
 import java.time.Instant;
 
@@ -37,4 +39,5 @@ public interface ClientSession extends Subscriber {
     void heartbeat();
 
     void close();
+
 }

@@ -11,6 +11,7 @@ import io.vertx.core.Future;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
 import java.time.Instant;
 import java.util.List;

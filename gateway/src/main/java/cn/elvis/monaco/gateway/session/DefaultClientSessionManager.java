@@ -4,10 +4,12 @@ import cn.elvis.monaco.gateway.ChannelKeys;
 import cn.elvis.monaco.gateway.entity.events.ClientSessionClose;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
+import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
 import java.util.Map;
 import java.util.Objects;
@@ -32,9 +34,9 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     public DefaultClientSessionManager(Settings settings, Vertx vertx) {
         this.settings = settings;
         this.eventBus = vertx.eventBus();
-        vertx.setTimer(1000, id -> {
-            removeExpiredSessions();
-        });
+//        vertx.setTimer(1000, id -> {
+//            removeExpiredSessions();
+//        });
     }
 
     @Override
@@ -43,14 +45,15 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     }
 
     @Override
-    public MqttConnectReturnCode register(ClientSession clientSession) {
-        removeExpiredSessions();
+    public synchronized MqttConnectReturnCode register(ClientSession clientSession) {
+//        removeExpiredSessions();
         if (clientSession.cleanStart()) {
             ClientSession previous = store.remove(clientSession.identifier());
             if (Objects.nonNull(previous)) {
+                System.out.println("disconnect:" + previous.identifier());
                 previous.close();
             }
-        } else if (store.containsKey(clientSession.identifier())) {
+        } else if (sessionPresent(clientSession.identifier())) {
             return MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED;
         }
         if (store.size() + 1 <= settings.maximumSessionCount()) {
@@ -64,7 +67,10 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     @Override
     public void unregister(String clientId, boolean normalClosed) {
-        store.remove(clientId);
+        var previous = store.remove(clientId);
+        if (Objects.isNull(previous)) {
+            return;
+        }
         eventBus.publish(ChannelKeys.CLIENT_SESSION_CLOSE, new ClientSessionClose(clientId, normalClosed));
     }
 

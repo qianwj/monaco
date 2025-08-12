@@ -77,14 +77,13 @@ public class GatewayVerticle extends AbstractVerticle {
                 endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED);
                 return;
             }
-            log.info("New client incoming: " + endpoint.clientIdentifier());
+            log.info("New client incoming: " + endpoint.clientIdentifier() + ", clean start: " + endpoint.isCleanSession());
             ClientSession session = new DefaultClientSession(endpoint, EnvironmentSettings.getInstance());
             MqttConnectReturnCode returnCode = clientSessionManager.register(session);
             if (returnCode != MqttConnectReturnCode.CONNECTION_ACCEPTED) {
                 endpoint.reject(returnCode);
                 return;
             }
-
             log.info("Client session [" + endpoint.clientIdentifier() + "] connected. store will? " + endpoint.will().isWillFlag());
             if (endpoint.will().isWillFlag()) {
                 WillMessage will = WillMessage.create(endpoint.will());
@@ -173,10 +172,10 @@ public class GatewayVerticle extends AbstractVerticle {
                 clientSessionManager.heartbeat(session.identifier());
                 endpoint.pong();
             });
-//            endpoint.closeHandler(v -> {
-//                clientSessionManager.unregister(session.identifier(), false);
-//                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
-//            });
+            endpoint.closeHandler(v -> {
+                clientSessionManager.unregister(session.identifier(), false);
+                log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
+            });
             endpoint.disconnectMessageHandler(packet -> {
                 log.info("client[" + endpoint.clientIdentifier() + "] receive DISCONNECT packet: " + packet);
                 if (packet.code() == MqttDisconnectReasonCode.NORMAL) {
@@ -184,6 +183,10 @@ public class GatewayVerticle extends AbstractVerticle {
                     return;
                 }
                 clientSessionManager.unregister(session.identifier(), false);
+            });
+            endpoint.exceptionHandler(e -> {
+                log.error("endpoint occur exception" + e.getLocalizedMessage());
+                e.printStackTrace();
             });
         }).listen(18083);
         log.info("broker started");
