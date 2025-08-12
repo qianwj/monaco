@@ -16,6 +16,8 @@ public final class DefaultSettings implements Settings {
 
     private static final int DEFAULT_RECEIVE_MAXIMUM = 65535;
 
+    private static final int TOPIC_ALIAS_MAXIMUM = 500;
+
     private static final DefaultSettings INSTANCE = new DefaultSettings();
 
     private DefaultSettings() {}
@@ -42,6 +44,11 @@ public final class DefaultSettings implements Settings {
     @Override
     public int defaultReceiveMaximum() {
         return DEFAULT_RECEIVE_MAXIMUM;
+    }
+
+    @Override
+    public int topicAliasMaximum() {
+        return TOPIC_ALIAS_MAXIMUM;
     }
 
     @Override

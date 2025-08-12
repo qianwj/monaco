@@ -4,12 +4,10 @@ import cn.elvis.monaco.gateway.ChannelKeys;
 import cn.elvis.monaco.gateway.entity.events.ClientSessionClose;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
-import io.netty.handler.codec.mqtt.MqttProperties;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
-import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
 import java.util.Map;
 import java.util.Objects;
@@ -34,9 +32,9 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     public DefaultClientSessionManager(Settings settings, Vertx vertx) {
         this.settings = settings;
         this.eventBus = vertx.eventBus();
-//        vertx.setTimer(1000, id -> {
-//            removeExpiredSessions();
-//        });
+        vertx.setTimer(1000, id -> {
+            removeExpiredSessions();
+        });
     }
 
     @Override
@@ -46,7 +44,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     @Override
     public synchronized MqttConnectReturnCode register(ClientSession clientSession) {
-//        removeExpiredSessions();
+        removeExpiredSessions();
         if (clientSession.cleanStart()) {
             ClientSession previous = store.remove(clientSession.identifier());
             if (Objects.nonNull(previous)) {

@@ -21,6 +21,8 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String DEFAULT_RECEIVE_MAXIMUM_KEY = KEY_PREFIX + "DEFAULT_RECEIVE_MAXIMUM";
 
+    private static final String TOPIC_ALIAS_MAXIMUM_KEY = KEY_PREFIX + "TOPIC_ALIAS_MAXIMUM";
+
     private static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
 
     private final Settings defaultSettings = DefaultSettings.getInstance();
@@ -56,6 +58,11 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public boolean retainAvailable() {
         return booleanValue(RETAIN_AVAILABLE_KEY, defaultSettings::retainAvailable);
+    }
+
+    @Override
+    public int topicAliasMaximum() {
+        return intValue(TOPIC_ALIAS_MAXIMUM_KEY, defaultSettings::topicAliasMaximum);
     }
 
     private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {

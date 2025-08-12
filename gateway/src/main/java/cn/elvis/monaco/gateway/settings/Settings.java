@@ -16,5 +16,7 @@ public interface Settings {
 
     int defaultReceiveMaximum();
 
+    int topicAliasMaximum();
+
     boolean retainAvailable();
 }

@@ -6,6 +6,7 @@ import cn.elvis.monaco.gateway.entity.WillMessage;
 import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.AbstractVerticle;

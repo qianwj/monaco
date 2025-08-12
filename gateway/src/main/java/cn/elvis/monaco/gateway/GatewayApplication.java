@@ -4,6 +4,8 @@ import cn.elvis.monaco.gateway.entity.codec.EventMessageCodec;
 import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
 import cn.elvis.monaco.gateway.settings.Settings;
+import cn.elvis.monaco.gateway.store.MemoryTopicAliasStore;
+import cn.elvis.monaco.gateway.store.TopicAliasStore;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 
@@ -14,6 +16,7 @@ public class GatewayApplication {
         printSettings(EnvironmentSettings.getInstance());
         // register event message codec
         EventMessageCodec.register(vertx);
+        final TopicAliasStore topicAliasStore = new MemoryTopicAliasStore();
         final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(
                 EnvironmentSettings.getInstance(),
                 vertx
