@@ -65,6 +65,6 @@ public final class DefaultSettings implements Settings {
 
     @Override
     public TransportSettings webSocket() {
-        return new TransportSettingsImpl(TransportType.WS, false, 8083, false, 1);
+        return new TransportSettingsImpl(TransportType.WS, false, 8883, false, 1);
     }
 }
