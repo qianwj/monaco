@@ -55,4 +55,14 @@ public final class DefaultSettings implements Settings {
     public boolean retainAvailable() {
         return false;
     }
+
+    @Override
+    public TCPTransportConfig tcpTransportConfig() {
+        return new TCPTransportConfig(true, 1883, false);
+    }
+
+    @Override
+    public WebSocketTransportConfig webSocketTransportConfig() {
+        return new WebSocketTransportConfig(false, -1, "", false);
+    }
 }

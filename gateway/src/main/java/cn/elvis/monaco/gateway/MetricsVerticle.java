@@ -1,6 +1,6 @@
 package cn.elvis.monaco.gateway;
 
-import cn.elvis.monaco.gateway.session.ClientSessionManager;
+import cn.elvis.monaco.gateway.manager.ClientSessionManager;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;

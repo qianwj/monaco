@@ -1,5 +1,6 @@
-package cn.elvis.monaco.gateway.session;
+package cn.elvis.monaco.gateway.manager;
 
+import cn.elvis.monaco.gateway.session.ClientSession;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 
 /**
@@ -7,7 +8,7 @@ import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
  * @author qianwj
  * @since  0.0.1
  */
-public interface ClientSessionManager {
+public interface ClientSessionManager extends Manager {
 
     /**
      * Check clients contains current client identifier
@@ -40,6 +41,4 @@ public interface ClientSessionManager {
      * @return current sessions count
      */
     int sessionCount();
-
-    void close();
 }

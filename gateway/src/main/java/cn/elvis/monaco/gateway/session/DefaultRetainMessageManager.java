@@ -3,6 +3,7 @@ package cn.elvis.monaco.gateway.session;
 import cn.elvis.monaco.gateway.ChannelKeys;
 import cn.elvis.monaco.gateway.entity.PublishMessage;
 import cn.elvis.monaco.gateway.listener.ClientSessionSubscribeListener;
+import cn.elvis.monaco.gateway.manager.RetainMessageManager;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;

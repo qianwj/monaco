@@ -25,11 +25,36 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
 
+    private static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
+
+    private static final String TCP_TRANSPORT_ENABLE_KEY = TCP_TRANSPORT_KEY_PREFIX + "ENABLE";
+
+    private static final String TCP_TRANSPORT_PORT_KEY = TCP_TRANSPORT_KEY_PREFIX + "PORT";
+
+    private static final String TCP_TRANSPORT_USE_TLS_KEY = TCP_TRANSPORT_KEY_PREFIX + "USE_TLS";
+
+    private static final String WS_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "WS_TRANSPORT_";
+
+    private static final String WS_TRANSPORT_ENABLE_KEY = WS_TRANSPORT_KEY_PREFIX + "ENABLE";
+
+    private static final String WS_TRANSPORT_PORT_KEY = WS_TRANSPORT_KEY_PREFIX + "PORT";
+
+    private static final String WS_TRANSPORT_USE_TLS_KEY = WS_TRANSPORT_KEY_PREFIX + "USE_TLS";
+
+    private static final String WS_TRANSPORT_PATH_KEY = WS_TRANSPORT_KEY_PREFIX + "PATH";
+
     private final Settings defaultSettings = DefaultSettings.getInstance();
+
+    private final TCPTransportConfig tcpTransportConfig;
+
+    private final WebSocketTransportConfig webSocketTransportConfig;
 
     private static final EnvironmentSettings INSTANCE = new EnvironmentSettings();
 
-    private EnvironmentSettings() {};
+    private EnvironmentSettings() {
+        this.tcpTransportConfig = initTCPTransportConfig();
+        this.webSocketTransportConfig = initWebSocketTransportConfig();
+    }
 
     public static Settings getInstance() {
         return INSTANCE;
@@ -63,6 +88,31 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public int topicAliasMaximum() {
         return intValue(TOPIC_ALIAS_MAXIMUM_KEY, defaultSettings::topicAliasMaximum);
+    }
+
+    @Override
+    public TCPTransportConfig tcpTransportConfig() {
+        return tcpTransportConfig;
+    }
+
+    @Override
+    public WebSocketTransportConfig webSocketTransportConfig() {
+        return webSocketTransportConfig;
+    }
+
+    private TCPTransportConfig initTCPTransportConfig() {
+        boolean enable = booleanValue(TCP_TRANSPORT_ENABLE_KEY, defaultSettings.tcpTransportConfig()::enable);
+        int port = intValue(TCP_TRANSPORT_PORT_KEY, defaultSettings.tcpTransportConfig()::port);
+        boolean useTLS = booleanValue(TCP_TRANSPORT_USE_TLS_KEY, defaultSettings.tcpTransportConfig()::useTLS);
+        return new TCPTransportConfig(enable, port, useTLS);
+    }
+
+    private WebSocketTransportConfig initWebSocketTransportConfig() {
+        boolean enable = booleanValue(WS_TRANSPORT_ENABLE_KEY, defaultSettings.webSocketTransportConfig()::enable);
+        int port = intValue(WS_TRANSPORT_PORT_KEY, defaultSettings.webSocketTransportConfig()::port);
+        String path = value(WS_TRANSPORT_PATH_KEY).orElse(defaultSettings.webSocketTransportConfig().path());
+        boolean useTLS = booleanValue(WS_TRANSPORT_USE_TLS_KEY, defaultSettings.webSocketTransportConfig()::useTLS);
+        return new WebSocketTransportConfig(enable, port, path, useTLS);
     }
 
     private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {

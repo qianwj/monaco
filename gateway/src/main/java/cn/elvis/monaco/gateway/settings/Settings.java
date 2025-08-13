@@ -19,4 +19,8 @@ public interface Settings {
     int topicAliasMaximum();
 
     boolean retainAvailable();
+
+    TCPTransportConfig tcpTransportConfig();
+
+    WebSocketTransportConfig webSocketTransportConfig();
 }

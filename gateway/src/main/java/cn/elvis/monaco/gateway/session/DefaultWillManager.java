@@ -3,13 +3,12 @@ package cn.elvis.monaco.gateway.session;
 import cn.elvis.monaco.gateway.ChannelKeys;
 import cn.elvis.monaco.gateway.entity.WillMessage;
 import cn.elvis.monaco.gateway.listener.ClientSessionCloseListener;
+import cn.elvis.monaco.gateway.manager.WillManager;
 import io.netty.util.HashedWheelTimer;
-import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +53,7 @@ public final class DefaultWillManager implements WillManager {
     }
 
     @Override
-    public void stop() {
+    public void close() {
         clientSessionCloseListener.close();
     }
 }

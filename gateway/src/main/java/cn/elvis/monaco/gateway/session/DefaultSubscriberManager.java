@@ -5,6 +5,7 @@ import cn.elvis.monaco.gateway.entity.Subscription;
 import cn.elvis.monaco.gateway.entity.events.SubscriptionExtend;
 import cn.elvis.monaco.gateway.listener.SystemPublishListener;
 import cn.elvis.monaco.gateway.listener.WillPublishListener;
+import cn.elvis.monaco.gateway.manager.SubscriberManager;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
