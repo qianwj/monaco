@@ -2,11 +2,17 @@ package cn.elvis.monaco.gateway.settings;
 
 import io.vertx.mqtt.MqttServerOptions;
 
+import java.util.StringJoiner;
+
 /**
- * Transport use tcp protocol
- * @param enable
- * @param port
- * @param useTLS
+ * Transport settings implementations
+ * @param enable {@code true} is allowed use this transport.
+ * @param port Transport listen port.
+ * @param useTLS Use secure tcp or ws connection.
+ * @param instances Transport count.
+ *
+ * @author qianwj
+ * @since  0.0.1
  */
 record TransportSettingsImpl(
         boolean enable,
@@ -21,5 +27,15 @@ record TransportSettingsImpl(
                 new MqttServerOptions()
                         .setPort(port)
                         .setSsl(useTLS) : null;
+    }
+
+    @Override
+    public String toString() {
+        var joiner = new StringJoiner(", ", "{", "}");
+        joiner.add("enable: " + enable);
+        joiner.add("port: " + port);
+        joiner.add("useTLS: " + useTLS);
+        joiner.add("instances: " + instances);
+        return joiner.toString();
     }
 }
