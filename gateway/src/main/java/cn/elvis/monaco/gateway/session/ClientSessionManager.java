@@ -31,10 +31,15 @@ public interface ClientSessionManager {
     void unregister(String clientId, boolean normalClosed);
 
     /**
-     * client heartbeat, refresh last active time of this client
+     * Client heartbeat, refresh last active time of this client
      * @param clientId: client identifier
      */
     void heartbeat(String clientId);
 
+    /**
+     * @return current sessions count
+     */
     int sessionCount();
+
+    void close();
 }

@@ -14,6 +14,8 @@ import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -95,8 +97,8 @@ public final class DefaultClientSession implements ClientSession {
     }
 
     @Override
-    public Instant expiryTime() {
-        return expiredTime;
+    public ZonedDateTime expiryTime() {
+        return expiredTime.atZone(ZoneId.systemDefault());
     }
 
     @Override

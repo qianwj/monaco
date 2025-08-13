@@ -1,11 +1,9 @@
 package cn.elvis.monaco.gateway.session;
 
 import cn.elvis.monaco.gateway.entity.PublishMessage;
-import io.netty.handler.codec.mqtt.MqttProperties;
 import io.vertx.core.Future;
-import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 
-import java.time.Instant;
+import java.time.ZonedDateTime;
 
 /**
  * Client session
@@ -32,7 +30,7 @@ public interface ClientSession extends Subscriber {
 
     boolean isExpired();
 
-    Instant expiryTime();
+    ZonedDateTime expiryTime();
 
     Future<Void> forward(PublishMessage message);
 

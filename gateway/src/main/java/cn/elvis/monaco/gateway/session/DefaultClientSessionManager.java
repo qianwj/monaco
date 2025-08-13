@@ -5,7 +5,6 @@ import cn.elvis.monaco.gateway.entity.events.ClientSessionClose;
 import cn.elvis.monaco.gateway.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 
@@ -27,14 +26,14 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     private final Settings settings;
 
-    private final EventBus eventBus;
+    private final Vertx vertx;
+
+    private final long timerId;
 
     public DefaultClientSessionManager(Settings settings, Vertx vertx) {
         this.settings = settings;
-        this.eventBus = vertx.eventBus();
-        vertx.setTimer(1000, id -> {
-            removeExpiredSessions();
-        });
+        this.vertx = vertx;
+        this.timerId = vertx.setTimer(1000, id -> removeExpiredSessions());
     }
 
     @Override
@@ -69,7 +68,8 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         if (Objects.isNull(previous)) {
             return;
         }
-        eventBus.publish(ChannelKeys.CLIENT_SESSION_CLOSE, new ClientSessionClose(clientId, normalClosed));
+        vertx.eventBus()
+                .publish(ChannelKeys.CLIENT_SESSION_CLOSE, new ClientSessionClose(clientId, normalClosed));
     }
 
     @Override
@@ -85,10 +85,16 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         return store.size();
     }
 
+    @Override
+    public void close() {
+        vertx.cancelTimer(timerId);
+    }
+
     private void removeExpiredSessions() {
         for (Map.Entry<String, ClientSession> entry : store.entrySet()) {
             if (entry.getValue().isExpired()) {
                 store.remove(entry.getKey());
+                entry.getValue().close();
             }
         }
     }
