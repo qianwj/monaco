@@ -63,6 +63,6 @@ public final class DefaultSettings implements Settings {
 
     @Override
     public WebSocketTransportConfig webSocketTransportConfig() {
-        return new WebSocketTransportConfig(false, -1, "", false);
+        return new WebSocketTransportConfig(false, 8083, "/mqtt", false);
     }
 }
