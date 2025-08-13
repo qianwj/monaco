@@ -6,5 +6,11 @@ public interface TransportSettings {
 
     boolean enable();
 
+    int port();
+
+    boolean useTLS();
+
+    int instances();
+
     MqttServerOptions options();
 }

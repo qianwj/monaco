@@ -8,10 +8,11 @@ import io.vertx.mqtt.MqttServerOptions;
  * @param port
  * @param useTLS
  */
-public record TCPTransportConfig(
+record TransportSettingsImpl(
         boolean enable,
         int port,
-        boolean useTLS
+        boolean useTLS,
+        int instances
 ) implements TransportSettings {
 
     @Override

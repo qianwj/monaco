@@ -57,12 +57,12 @@ public final class DefaultSettings implements Settings {
     }
 
     @Override
-    public TCPTransportConfig tcpTransportConfig() {
-        return new TCPTransportConfig(true, 1883, false);
+    public TransportSettings tcp() {
+        return new TransportSettingsImpl(true, 1883, false, 1);
     }
 
     @Override
-    public WebSocketTransportConfig webSocketTransportConfig() {
-        return new WebSocketTransportConfig(false, 8083, "/mqtt", false);
+    public TransportSettings webSocket() {
+        return new TransportSettingsImpl(false, 8083, false, 1);
     }
 }

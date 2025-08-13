@@ -27,33 +27,27 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
 
-    private static final String TCP_TRANSPORT_ENABLE_KEY = TCP_TRANSPORT_KEY_PREFIX + "ENABLE";
-
-    private static final String TCP_TRANSPORT_PORT_KEY = TCP_TRANSPORT_KEY_PREFIX + "PORT";
-
-    private static final String TCP_TRANSPORT_USE_TLS_KEY = TCP_TRANSPORT_KEY_PREFIX + "USE_TLS";
-
     private static final String WS_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "WS_TRANSPORT_";
 
-    private static final String WS_TRANSPORT_ENABLE_KEY = WS_TRANSPORT_KEY_PREFIX + "ENABLE";
+    private static final String TRANSPORT_ENABLE_KEY = "ENABLE";
 
-    private static final String WS_TRANSPORT_PORT_KEY = WS_TRANSPORT_KEY_PREFIX + "PORT";
+    private static final String TRANSPORT_PORT_KEY = "PORT";
 
-    private static final String WS_TRANSPORT_USE_TLS_KEY = WS_TRANSPORT_KEY_PREFIX + "USE_TLS";
+    private static final String TRANSPORT_USE_TLS_KEY = "USE_TLS";
 
-    private static final String WS_TRANSPORT_PATH_KEY = WS_TRANSPORT_KEY_PREFIX + "PATH";
+    private static final String TRANSPORT_INSTANCES_KEY = "INSTANCES";
 
     private final Settings defaultSettings = DefaultSettings.getInstance();
 
-    private final TCPTransportConfig tcpTransportConfig;
+    private final TransportSettings tcpTransportConfig;
 
-    private final WebSocketTransportConfig webSocketTransportConfig;
+    private final TransportSettings webSocketTransportConfig;
 
     private static final EnvironmentSettings INSTANCE = new EnvironmentSettings();
 
     private EnvironmentSettings() {
-        this.tcpTransportConfig = initTCPTransportConfig();
-        this.webSocketTransportConfig = initWebSocketTransportConfig();
+        this.tcpTransportConfig = getTransportSettings(defaultSettings.tcp(), TCP_TRANSPORT_KEY_PREFIX);
+        this.webSocketTransportConfig = getTransportSettings(defaultSettings.webSocket(), WS_TRANSPORT_KEY_PREFIX);
     }
 
     public static Settings getInstance() {
@@ -91,28 +85,21 @@ public final class EnvironmentSettings implements Settings {
     }
 
     @Override
-    public TCPTransportConfig tcpTransportConfig() {
+    public TransportSettings tcp() {
         return tcpTransportConfig;
     }
 
     @Override
-    public WebSocketTransportConfig webSocketTransportConfig() {
+    public TransportSettings webSocket() {
         return webSocketTransportConfig;
     }
 
-    private TCPTransportConfig initTCPTransportConfig() {
-        boolean enable = booleanValue(TCP_TRANSPORT_ENABLE_KEY, defaultSettings.tcpTransportConfig()::enable);
-        int port = intValue(TCP_TRANSPORT_PORT_KEY, defaultSettings.tcpTransportConfig()::port);
-        boolean useTLS = booleanValue(TCP_TRANSPORT_USE_TLS_KEY, defaultSettings.tcpTransportConfig()::useTLS);
-        return new TCPTransportConfig(enable, port, useTLS);
-    }
-
-    private WebSocketTransportConfig initWebSocketTransportConfig() {
-        boolean enable = booleanValue(WS_TRANSPORT_ENABLE_KEY, defaultSettings.webSocketTransportConfig()::enable);
-        int port = intValue(WS_TRANSPORT_PORT_KEY, defaultSettings.webSocketTransportConfig()::port);
-        String path = value(WS_TRANSPORT_PATH_KEY).orElse(defaultSettings.webSocketTransportConfig().path());
-        boolean useTLS = booleanValue(WS_TRANSPORT_USE_TLS_KEY, defaultSettings.webSocketTransportConfig()::useTLS);
-        return new WebSocketTransportConfig(enable, port, path, useTLS);
+    private TransportSettings getTransportSettings(TransportSettings defaultSettings, String prefix) {
+        boolean enable = booleanValue(prefix + TRANSPORT_ENABLE_KEY, defaultSettings::enable);
+        int port = intValue(prefix + TRANSPORT_PORT_KEY, defaultSettings::port);
+        boolean useTLS = booleanValue(prefix + TRANSPORT_USE_TLS_KEY, defaultSettings::useTLS);
+        int instances = intValue(prefix + TRANSPORT_INSTANCES_KEY, defaultSettings::instances);
+        return new TransportSettingsImpl(enable, port, useTLS, instances);
     }
 
     private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {

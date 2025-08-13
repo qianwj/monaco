@@ -6,7 +6,6 @@ import cn.elvis.monaco.gateway.settings.TransportSettings;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttServer;
@@ -36,8 +35,8 @@ abstract class Transport extends AbstractVerticle {
 
     final Future<Void> startServer(String transportType) throws Exception {
         TransportSettings config = switch (transportType) {
-            case "TCP" -> settings.tcpTransportConfig();
-            case "WS" -> settings.webSocketTransportConfig();
+            case "TCP" -> settings.tcp();
+            case "WS" -> settings.webSocket();
             default -> throw new IllegalArgumentException("Unsupported transportType: " + transportType);
         };
         if (config.enable()) {

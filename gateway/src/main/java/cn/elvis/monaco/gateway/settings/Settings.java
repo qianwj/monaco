@@ -20,7 +20,7 @@ public interface Settings {
 
     boolean retainAvailable();
 
-    TCPTransportConfig tcpTransportConfig();
+    TransportSettings tcp();
 
-    WebSocketTransportConfig webSocketTransportConfig();
+    TransportSettings webSocket();
 }

@@ -12,7 +12,13 @@ import io.vertx.core.Vertx;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MonacoServer {
+/**
+ * Monaco Server, a simple and lightweight mqtt broker.
+ *
+ * @author qianwj
+ * @since  0.0.1
+ */
+public final class MonacoServer {
 
     private final Vertx vertx;
 
@@ -50,16 +56,16 @@ public class MonacoServer {
                 willManager,
                 retainMessageManager
         );
-        if (settings.tcpTransportConfig().enable()) {
+        if (settings.tcp().enable()) {
             vertx.deployVerticle(
                     () -> new TCPTransport(settings, handler),
-                    new DeploymentOptions().setInstances(1)
+                    new DeploymentOptions().setInstances(settings.tcp().instances())
             );
         }
-        if (settings.webSocketTransportConfig().enable()) {
+        if (settings.webSocket().enable()) {
             vertx.deployVerticle(
                     () -> new WebSocketTransport(settings, handler),
-                    new DeploymentOptions().setInstances(1)
+                    new DeploymentOptions().setInstances(settings.webSocket().instances())
             );
         }
     }
@@ -72,7 +78,7 @@ public class MonacoServer {
         System.out.println("   default_receive_maximum: " + settings.defaultReceiveMaximum());
         System.out.println("   topic_alias_maximum: " + settings.topicAliasMaximum());
         System.out.println("   retain_available: " + settings.retainAvailable());
-        System.out.println("   tcp_transport_config: " + settings.tcpTransportConfig());
-        System.out.println("   websocket_transport_config: " + settings.webSocketTransportConfig());
+        System.out.println("   tcp_transport_config: " + settings.tcp());
+        System.out.println("   websocket_transport_config: " + settings.webSocket());
     }
 }
