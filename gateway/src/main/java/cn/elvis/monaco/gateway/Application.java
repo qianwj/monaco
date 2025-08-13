@@ -8,7 +8,7 @@ import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
  * @author qianwj
  * @since  0.0.1
  */
-public class GatewayApplication {
+public class Application {
 
     public static void main(String[] args) {
         MonacoServer server = new MonacoServer(EnvironmentSettings.getInstance());
