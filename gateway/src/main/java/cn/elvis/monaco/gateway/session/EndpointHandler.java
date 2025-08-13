@@ -26,10 +26,22 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Endpoint handler, handle endpoint instance events.
+ * The simplest MQTT Broker
+ *  1. Not support server assigned client identifier.
+ *  2. Only subscribe exact topic(exclude wildcard topic & shared topic).
+ *  3. Only publish to exact topic.
+ *  4. Support qos2 messages.
+ *     See also: <a href="https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_QoS_2:_Exactly">QoS 2: Exactly once delivery</a>
+ *     ---------------------------------------------------------------------------------------------------
+ *     | sender ---- PUBLISH ---> broker(counting total)   ---- PUBLISH ---> receiver_1, receiver2, .... |
+ *     |        <--- PUBREC  ----                          <--- PUBREC  ----                             |
+ *     |        ---- PUBREL  --->                          ---- PUBREL  --->                             |
+ *     |        <--- PUBCOMP ---- (release stored message) <--- PUBCOMP ----                             |
+ *     ---------------------------------------------------------------------------------------------------
+ *  5. Not support bridge mode & cluster mode.
  *
  * @author qianwj
- * @since  0.0.1
+ * @since  v0.0.1
  */
 public final class EndpointHandler implements Handler<MqttEndpoint> {
 
