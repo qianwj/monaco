@@ -81,7 +81,9 @@ public final class DefaultPublisherManager implements PublisherManager {
         }
         if (!message.retain()) {
             Queue<PublishMessage> clientMessageQueue = messageQueue.getOrDefault(clientId, new ArrayBlockingQueue<>(settings.publishQueueMaximum()));
-            clientMessageQueue.add(message);
+            if (!clientMessageQueue.offer(message)) {
+                return Future.failedFuture(Exceptions.publishQueueFulfilled());
+            }
             messageQueue.put(clientId, clientMessageQueue);
             vertx.eventBus().publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, message);
         }
