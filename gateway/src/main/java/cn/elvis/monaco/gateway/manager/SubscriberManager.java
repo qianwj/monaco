@@ -5,6 +5,7 @@ import cn.elvis.monaco.gateway.session.ClientSession;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 import io.vertx.mqtt.messages.codes.MqttUnsubAckReasonCode;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -20,4 +21,6 @@ public interface SubscriberManager extends Manager {
     MqttUnsubAckReasonCode unsubscribe(ClientSession clientSession, String topicFilter);
 
     void search(String filter, Consumer<Subscription> consumer);
+
+    boolean exists(String filter);
 }

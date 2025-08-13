@@ -4,6 +4,8 @@ import cn.elvis.monaco.gateway.entity.codec.EventMessageCodec;
 import cn.elvis.monaco.gateway.manager.*;
 import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.gateway.settings.Settings;
+import cn.elvis.monaco.gateway.store.MemoryTopicAliasStore;
+import cn.elvis.monaco.gateway.store.TopicAliasStore;
 import cn.elvis.monaco.gateway.transport.TCPTransport;
 import cn.elvis.monaco.gateway.transport.WebSocketTransport;
 import io.vertx.core.DeploymentOptions;
@@ -45,13 +47,16 @@ public final class MonacoServer {
     }
 
     private void init() {
+        final TopicAliasStore topicAliasStore = new MemoryTopicAliasStore();
         final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx);
+        final PublisherManager publisherManager = new DefaultPublisherManager(topicAliasStore, vertx);
         final SubscriberManager subscriberManager = new DefaultSubscriberManager(vertx.eventBus());
         final WillManager willManager = new DefaultWillManager(vertx.eventBus());
         final RetainMessageManager retainMessageManager = new DefaultRetainMessageManager(settings, vertx.eventBus());
         managers.addAll(List.of(clientSessionManager, subscriberManager, willManager, retainMessageManager));
         final EndpointHandler handler = new EndpointHandler(
                 clientSessionManager,
+                publisherManager,
                 subscriberManager,
                 willManager,
                 retainMessageManager

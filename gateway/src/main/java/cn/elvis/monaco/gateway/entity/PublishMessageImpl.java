@@ -27,13 +27,26 @@ public final class PublishMessageImpl implements PublishMessage {
         this.expiryTime = expiryTime(source.properties());
     }
 
-    PublishMessageImpl(PublishMessage source, boolean duplicate, boolean retain) {
+    PublishMessageImpl(MqttPublishMessage source, String topic, boolean duplicate, boolean retain) {
+        this.source = MqttPublishMessage.create(
+                source.messageId(),
+                source.qosLevel(),
+                duplicate,
+                retain,
+                topic,
+                source.payload(),
+                source.properties()
+        );
+        this.expiryTime = expiryTime(source.properties());
+    }
+
+    PublishMessageImpl(PublishMessage source, String topic, boolean duplicate, boolean retain) {
         this.source = MqttPublishMessage.create(
                 source.packetId(),
                 source.qos(),
                 duplicate,
                 retain,
-                source.topic(),
+                topic,
                 source.payload(),
                 source.properties()
         );
@@ -95,7 +108,12 @@ public final class PublishMessageImpl implements PublishMessage {
 
     @Override
     public PublishMessage setRetain(boolean retain) {
-        return new PublishMessageImpl(this, source.isDup(), retain);
+        return new PublishMessageImpl(this, source.topicName(), source.isDup(), retain);
+    }
+
+    @Override
+    public PublishMessage setTopic(String topic) {
+        return new PublishMessageImpl(this, topic, source.isDup(), source.isRetain());
     }
 
     private Instant expiryTime(MqttProperties properties) {

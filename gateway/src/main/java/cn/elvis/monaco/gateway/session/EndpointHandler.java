@@ -3,14 +3,15 @@ package cn.elvis.monaco.gateway.session;
 import cn.elvis.monaco.gateway.entity.PublishMessage;
 import cn.elvis.monaco.gateway.entity.Subscription;
 import cn.elvis.monaco.gateway.entity.WillMessage;
-import cn.elvis.monaco.gateway.manager.ClientSessionManager;
-import cn.elvis.monaco.gateway.manager.RetainMessageManager;
-import cn.elvis.monaco.gateway.manager.SubscriberManager;
-import cn.elvis.monaco.gateway.manager.WillManager;
+import cn.elvis.monaco.gateway.exception.NoMatchingSubscribersException;
+import cn.elvis.monaco.gateway.exception.TopicNameInvalidException;
+import cn.elvis.monaco.gateway.manager.*;
 import cn.elvis.monaco.gateway.settings.EnvironmentSettings;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.util.internal.StringUtil;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
@@ -18,11 +19,14 @@ import io.vertx.core.json.Json;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.MqttTopicSubscription;
 import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
+import io.vertx.mqtt.messages.codes.MqttPubAckReasonCode;
+import io.vertx.mqtt.messages.codes.MqttPubRecReasonCode;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -58,17 +62,20 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     private final ClientSessionManager clientSessionManager;
 
+    private final PublisherManager publisherManager;
+
     private final SubscriberManager subscriberManager;
 
     private final WillManager willManager;
 
     private final RetainMessageManager retainMessageManager;
 
-    public EndpointHandler(ClientSessionManager clientSessionManager,
+    public EndpointHandler(ClientSessionManager clientSessionManager, PublisherManager publisherManager,
                            SubscriberManager subscriberManager,
                            WillManager willManager,
                            RetainMessageManager retainMessageManager) {
         this.clientSessionManager = clientSessionManager;
+        this.publisherManager = publisherManager;
         this.subscriberManager = subscriberManager;
         this.willManager = willManager;
         this.retainMessageManager = retainMessageManager;
@@ -116,29 +123,15 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         endpoint.publishHandler(packet -> {
             clientSessionManager.heartbeat(session.identifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
-            PublishMessage message = PublishMessage.of(packet);
-            if (packet.isRetain()) {
-                retainMessageManager.addMessage(message);
-                return;
-            }
-            var topicName = packet.topicName();
-            var qos = packet.qosLevel();
-            if (qos == MqttQoS.EXACTLY_ONCE) {
-                endpoint.publishReceived(packet.messageId());
-            }
-            var qos2messageClientState = new ConcurrentHashMap<String, Boolean>();
-            subscriberManager.search(topicName, subscription -> {
-                subscription.subscriber().forward(message);
-                if (qos == MqttQoS.EXACTLY_ONCE) {
-                    qos2messageClientState.put(subscription.sessionId(), false);
+            publisherManager.publish(endpoint, packet, subscriberManager::exists).map(message -> {
+                if (message.retain()) {
+                    retainMessageManager.addMessage(message);
                 }
+                return message;
+            }).onFailure(ex -> {
+                publisherManager.reject(endpoint, ex, packet);
+                log.error("Failed to publish packet: ", ex);
             });
-            if (qos == MqttQoS.AT_LEAST_ONCE) {
-                messageStateStore.put(packet.messageId(), qos2messageClientState);
-            }
-            if (qos == MqttQoS.AT_MOST_ONCE || qos == MqttQoS.AT_LEAST_ONCE) {
-                endpoint.publishAcknowledge(packet.messageId());
-            }
         });
         endpoint.publishReceivedHandler(messageId -> {
             clientSessionManager.heartbeat(session.identifier());

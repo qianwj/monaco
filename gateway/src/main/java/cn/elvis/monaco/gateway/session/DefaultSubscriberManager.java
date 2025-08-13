@@ -6,6 +6,7 @@ import cn.elvis.monaco.gateway.entity.events.SubscriptionExtend;
 import cn.elvis.monaco.gateway.listener.SystemPublishListener;
 import cn.elvis.monaco.gateway.listener.WillPublishListener;
 import cn.elvis.monaco.gateway.manager.SubscriberManager;
+import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
@@ -30,6 +31,8 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 
     private final Map<String, List<Subscription>> store = new ConcurrentHashMap<>();
 
+    private final Map<String, Map<Integer, Boolean>> messageAcknowledgeState = new ConcurrentHashMap<>();
+
     private final EventBus eventBus;
 
     private final WillPublishListener willPublishListener;
@@ -47,7 +50,14 @@ public final class DefaultSubscriberManager implements SubscriberManager {
             search(msg.topic(), subscription -> subscription.subscriber().forward(msg));
         });
         this.systemPublishListener = new SystemPublishListener(eventBus, message ->
-                search(message.topic(), subscription -> subscription.subscriber().forward(message)));
+                search(message.topic(), subscription -> {
+                    subscription.subscriber().forward(message);
+                    if (message.qos() != MqttQoS.AT_MOST_ONCE) {
+                        Map<Integer, Boolean> clientMessageState = messageAcknowledgeState.getOrDefault(subscription.sessionId(), new ConcurrentHashMap<>());
+                        clientMessageState.put(message.packetId(), false);
+                        messageAcknowledgeState.put(subscription.sessionId(), clientMessageState);
+                    }
+                }));
     }
 
     @Override
@@ -82,6 +92,11 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     @Override
     public void search(String filter, Consumer<Subscription> consumer) {
         store.getOrDefault(filter, new ArrayList<>()).forEach(consumer);
+    }
+
+    @Override
+    public boolean exists(String filter) {
+        return store.containsKey(filter);
     }
 
     @Override

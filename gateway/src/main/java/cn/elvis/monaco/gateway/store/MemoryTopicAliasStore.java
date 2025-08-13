@@ -26,6 +26,9 @@ public final class MemoryTopicAliasStore implements TopicAliasStore {
 
     @Override
     public void addTopicAlias(String clientId, String topic, int topicAlias) {
+        if (topicAlias == 0) {
+            throw new IllegalArgumentException("topicAlias must not be zero");
+        }
         if (topicAlias > topicAliasMaximumStore.getOrDefault(clientId, 0)) {
             return;
         }
