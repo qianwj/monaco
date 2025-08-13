@@ -2,6 +2,7 @@ package cn.elvis.monaco.gateway.transport;
 
 import cn.elvis.monaco.gateway.session.EndpointHandler;
 import cn.elvis.monaco.gateway.settings.Settings;
+
 import io.vertx.core.Promise;
 
 /**
@@ -19,6 +20,6 @@ public final class TCPTransport extends Transport {
 
     @Override
     public void start(Promise<Void> starter) throws Exception {
-        startServer("TCP").onComplete(starter);
+        startServer(TransportType.TCP).onComplete(starter);
     }
 }

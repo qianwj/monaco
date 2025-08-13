@@ -1,5 +1,7 @@
 package cn.elvis.monaco.gateway.settings;
 
+import cn.elvis.monaco.gateway.transport.TransportType;
+
 /**
  * Default application settings, use fixed value and unmodifiable.
  *
@@ -58,11 +60,11 @@ public final class DefaultSettings implements Settings {
 
     @Override
     public TransportSettings tcp() {
-        return new TransportSettingsImpl(true, 1883, false, 1);
+        return new TransportSettingsImpl(TransportType.TCP, true, 1883, false, 1);
     }
 
     @Override
     public TransportSettings webSocket() {
-        return new TransportSettingsImpl(false, 8083, false, 1);
+        return new TransportSettingsImpl(TransportType.WS, false, 8083, false, 1);
     }
 }

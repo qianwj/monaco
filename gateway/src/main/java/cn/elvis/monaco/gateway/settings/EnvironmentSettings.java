@@ -1,5 +1,7 @@
 package cn.elvis.monaco.gateway.settings;
 
+import cn.elvis.monaco.gateway.transport.TransportType;
+
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -46,8 +48,16 @@ public final class EnvironmentSettings implements Settings {
     private static final EnvironmentSettings INSTANCE = new EnvironmentSettings();
 
     private EnvironmentSettings() {
-        this.tcpTransportConfig = getTransportSettings(defaultSettings.tcp(), TCP_TRANSPORT_KEY_PREFIX);
-        this.webSocketTransportConfig = getTransportSettings(defaultSettings.webSocket(), WS_TRANSPORT_KEY_PREFIX);
+        this.tcpTransportConfig = getTransportSettings(
+                TransportType.TCP,
+                defaultSettings.tcp(),
+                TCP_TRANSPORT_KEY_PREFIX
+        );
+        this.webSocketTransportConfig = getTransportSettings(
+                TransportType.WS,
+                defaultSettings.webSocket(),
+                WS_TRANSPORT_KEY_PREFIX
+        );
     }
 
     public static Settings getInstance() {
@@ -94,12 +104,14 @@ public final class EnvironmentSettings implements Settings {
         return webSocketTransportConfig;
     }
 
-    private TransportSettings getTransportSettings(TransportSettings defaultSettings, String prefix) {
+    private TransportSettings getTransportSettings(TransportType transportType,
+                                                   TransportSettings defaultSettings,
+                                                   String prefix) {
         boolean enable = booleanValue(prefix + TRANSPORT_ENABLE_KEY, defaultSettings::enable);
         int port = intValue(prefix + TRANSPORT_PORT_KEY, defaultSettings::port);
         boolean useTLS = booleanValue(prefix + TRANSPORT_USE_TLS_KEY, defaultSettings::useTLS);
         int instances = intValue(prefix + TRANSPORT_INSTANCES_KEY, defaultSettings::instances);
-        return new TransportSettingsImpl(enable, port, useTLS, instances);
+        return new TransportSettingsImpl(transportType, enable, port, useTLS, instances);
     }
 
     private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {

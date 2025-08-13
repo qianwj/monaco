@@ -1,5 +1,6 @@
 package cn.elvis.monaco.gateway.settings;
 
+import cn.elvis.monaco.gateway.transport.TransportType;
 import io.vertx.mqtt.MqttServerOptions;
 
 import java.util.StringJoiner;
@@ -15,6 +16,7 @@ import java.util.StringJoiner;
  * @since  0.0.1
  */
 record TransportSettingsImpl(
+        TransportType transportType,
         boolean enable,
         int port,
         boolean useTLS,
@@ -26,7 +28,9 @@ record TransportSettingsImpl(
         return enable ?
                 new MqttServerOptions()
                         .setPort(port)
-                        .setSsl(useTLS) : null;
+                        .setSsl(useTLS)
+                        .setUseWebSocket(transportType == TransportType.WS)
+                : null;
     }
 
     @Override

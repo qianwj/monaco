@@ -33,10 +33,10 @@ abstract class Transport extends AbstractVerticle {
         this.endpointHandler = endpointHandler;
     }
 
-    final Future<Void> startServer(String transportType) throws Exception {
+    final Future<Void> startServer(TransportType transportType) throws Exception {
         TransportSettings config = switch (transportType) {
-            case "TCP" -> settings.tcp();
-            case "WS" -> settings.webSocket();
+            case TransportType.TCP -> settings.tcp();
+            case TransportType.WS -> settings.webSocket();
             default -> throw new IllegalArgumentException("Unsupported transportType: " + transportType);
         };
         if (config.enable()) {
