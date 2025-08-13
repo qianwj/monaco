@@ -18,6 +18,8 @@ public interface Settings {
 
     int topicAliasMaximum();
 
+    int publishQueueMaximum();
+
     boolean retainAvailable();
 
     TransportSettings tcp();

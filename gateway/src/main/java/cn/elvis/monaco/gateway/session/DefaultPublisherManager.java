@@ -6,6 +6,7 @@ import cn.elvis.monaco.gateway.exception.Exceptions;
 import cn.elvis.monaco.gateway.exception.ProtocolException;
 import cn.elvis.monaco.gateway.listener.ClientSessionCloseListener;
 import cn.elvis.monaco.gateway.manager.PublisherManager;
+import cn.elvis.monaco.gateway.settings.Settings;
 import cn.elvis.monaco.gateway.store.TopicAliasStore;
 import cn.elvis.monaco.gateway.utils.MqttPropertiesUtils;
 import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
@@ -18,6 +19,10 @@ import io.vertx.mqtt.messages.MqttPublishMessage;
 import io.vertx.mqtt.messages.codes.MqttPubAckReasonCode;
 import io.vertx.mqtt.messages.codes.MqttPubRecReasonCode;
 
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
 /**
@@ -28,13 +33,18 @@ import java.util.function.Predicate;
  */
 public final class DefaultPublisherManager implements PublisherManager {
 
+    private final Map<String, Queue<PublishMessage>> messageQueue = new ConcurrentHashMap<>();
+
+    private final Settings settings;
+
     private final TopicAliasStore topicAliasStore;
 
     private final Vertx vertx;
 
     private final ClientSessionCloseListener clientSessionCloseListener;
 
-    public DefaultPublisherManager(TopicAliasStore topicAliasStore, Vertx vertx) {
+    public DefaultPublisherManager(Settings settings, TopicAliasStore topicAliasStore, Vertx vertx) {
+        this.settings = settings;
         this.topicAliasStore = topicAliasStore;
         this.vertx = vertx;
         this.clientSessionCloseListener = new ClientSessionCloseListener(vertx.eventBus(), event -> {
@@ -70,6 +80,9 @@ public final class DefaultPublisherManager implements PublisherManager {
             endpoint.publishAcknowledge(message.packetId());
         }
         if (!message.retain()) {
+            Queue<PublishMessage> clientMessageQueue = messageQueue.getOrDefault(clientId, new ArrayBlockingQueue<>(settings.publishQueueMaximum()));
+            clientMessageQueue.add(message);
+            messageQueue.put(clientId, clientMessageQueue);
             vertx.eventBus().publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, message);
         }
         return Future.succeededFuture(message);

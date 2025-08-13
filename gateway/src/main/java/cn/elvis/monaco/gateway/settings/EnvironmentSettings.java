@@ -27,6 +27,8 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
 
+    private static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
+
     private static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
 
     private static final String WS_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "WS_TRANSPORT_";
@@ -92,6 +94,11 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public int topicAliasMaximum() {
         return intValue(TOPIC_ALIAS_MAXIMUM_KEY, defaultSettings::topicAliasMaximum);
+    }
+
+    @Override
+    public int publishQueueMaximum() {
+        return intValue(PUBLISH_QUEUE_MAXIMUM_KEY, defaultSettings::publishQueueMaximum);
     }
 
     @Override

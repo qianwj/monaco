@@ -20,6 +20,8 @@ public final class DefaultSettings implements Settings {
 
     private static final int TOPIC_ALIAS_MAXIMUM = 500;
 
+    private static final int PUBLISH_QUEUE_MAXIMUM = 1000;
+
     private static final DefaultSettings INSTANCE = new DefaultSettings();
 
     private DefaultSettings() {}
@@ -51,6 +53,11 @@ public final class DefaultSettings implements Settings {
     @Override
     public int topicAliasMaximum() {
         return TOPIC_ALIAS_MAXIMUM;
+    }
+
+    @Override
+    public int publishQueueMaximum() {
+        return PUBLISH_QUEUE_MAXIMUM;
     }
 
     @Override
