@@ -1,9 +1,8 @@
 package cn.elvis.monaco;
 
 import cn.elvis.monaco.entity.codec.EventMessageCodec;
-import cn.elvis.monaco.gateway.manager.*;
-import cn.elvis.monaco.gateway.session.*;
 import cn.elvis.monaco.manager.*;
+import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.session.*;
 import cn.elvis.monaco.settings.Settings;
 import cn.elvis.monaco.store.MemoryTopicAliasStore;
@@ -12,6 +11,9 @@ import cn.elvis.monaco.transport.TCPTransport;
 import cn.elvis.monaco.transport.WebSocketTransport;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxBuilder;
+import io.vertx.core.VertxOptions;
+import io.vertx.micrometer.MicrometerMetricsFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +34,7 @@ public final class MonacoServer {
 
     public MonacoServer(Settings settings) {
         this.settings = settings;
-        this.vertx = Vertx.vertx();
+        this.vertx = createVertx();
     }
 
     public void start() {
@@ -46,6 +48,19 @@ public final class MonacoServer {
             manager.close();
         }
         vertx.close();
+    }
+
+    private Vertx createVertx() {
+        VertxBuilder builder = Vertx.builder();
+        if (settings.metrics().enable()) {
+            Metrics.init();
+            builder.with(
+                    new VertxOptions()
+                            .setMetricsOptions(settings.metrics().options())
+                    )
+                    .withMetrics(new MicrometerMetricsFactory(Metrics.registry()));
+        }
+        return builder.build();
     }
 
     private void init() {
@@ -88,5 +103,6 @@ public final class MonacoServer {
         System.out.println("   retain_available: " + settings.retainAvailable());
         System.out.println("   tcp_transport_config: " + settings.tcp());
         System.out.println("   websocket_transport_config: " + settings.webSocket());
+        System.out.println("   metrics: " + settings.metrics());
     }
 }

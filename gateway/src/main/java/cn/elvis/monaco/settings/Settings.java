@@ -25,4 +25,6 @@ public interface Settings {
     TransportSettings tcp();
 
     TransportSettings webSocket();
+
+    MetricsSettings metrics();
 }

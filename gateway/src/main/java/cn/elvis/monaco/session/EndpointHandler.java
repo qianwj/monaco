@@ -2,8 +2,8 @@ package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.entity.Subscription;
 import cn.elvis.monaco.entity.WillMessage;
-import cn.elvis.monaco.gateway.manager.*;
 import cn.elvis.monaco.manager.*;
+import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.settings.Settings;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
@@ -94,6 +94,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             endpoint.reject(returnCode);
             return;
         }
+        Metrics.addClient();
         int topicAliasMaximum = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.MqttPropertyType.TOPIC_ALIAS_MAXIMUM, settings.defaultReceiveMaximum());
         publisherManager.setTopicAliasMaximum(session.identifier(), topicAliasMaximum);
         log.info("Client session [" + endpoint.clientIdentifier() + "] connected. store will? " + endpoint.will().isWillFlag());
@@ -173,6 +174,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         endpoint.closeHandler(v -> {
             clientSessionManager.unregister(session.identifier(), false);
             log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
+            Metrics.removeClient();
         });
         endpoint.disconnectMessageHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive DISCONNECT packet: " + packet);
@@ -181,6 +183,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
                 return;
             }
             clientSessionManager.unregister(session.identifier(), false);
+            Metrics.removeClient();
         });
         endpoint.exceptionHandler(e -> {
             log.error("endpoint occur exception" + e.getLocalizedMessage());

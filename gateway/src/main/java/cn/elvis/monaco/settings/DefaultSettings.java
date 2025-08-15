@@ -24,6 +24,12 @@ public final class DefaultSettings implements Settings {
 
     private static final DefaultSettings INSTANCE = new DefaultSettings();
 
+    private final TransportSettings tcpTransportConfig = new TransportSettingsImpl(TransportType.TCP, true, 1883, false, 1);
+
+    private final TransportSettings webSocketTransportConfig = new TransportSettingsImpl(TransportType.WS, false, 8883, false, 1);
+
+    private final MetricsSettings metricsConfig = new MetricsSettingsImpl(false, false, "/metrics", 9095);
+
     private DefaultSettings() {}
 
     public static Settings getInstance() {
@@ -67,11 +73,16 @@ public final class DefaultSettings implements Settings {
 
     @Override
     public TransportSettings tcp() {
-        return new TransportSettingsImpl(TransportType.TCP, true, 1883, false, 1);
+        return tcpTransportConfig;
     }
 
     @Override
     public TransportSettings webSocket() {
-        return new TransportSettingsImpl(TransportType.WS, false, 8883, false, 1);
+        return webSocketTransportConfig;
+    }
+
+    @Override
+    public MetricsSettings metrics() {
+        return metricsConfig;
     }
 }

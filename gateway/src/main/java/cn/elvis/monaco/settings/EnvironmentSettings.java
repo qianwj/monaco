@@ -41,11 +41,21 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String TRANSPORT_INSTANCES_KEY = "INSTANCES";
 
+    private static final String METRICS_ENABLED_KEY = KEY_PREFIX + "METRICS_ENABLE";
+
+    private static final String METRICS_EXPORT_JVM_METRICS_KEY = KEY_PREFIX + "METRICS_EXPORT_JVM_METRICS";
+
+    private static final String METRICS_PORT_KEY = KEY_PREFIX + "METRICS_PORT";
+
+    private static final String METRICS_PATH_KEY = KEY_PREFIX + "METRICS_PATH";
+
     private final Settings defaultSettings = DefaultSettings.getInstance();
 
     private final TransportSettings tcpTransportConfig;
 
     private final TransportSettings webSocketTransportConfig;
+
+    private final MetricsSettings metricsConfig;
 
     private static final EnvironmentSettings INSTANCE = new EnvironmentSettings();
 
@@ -60,6 +70,7 @@ public final class EnvironmentSettings implements Settings {
                 defaultSettings.webSocket(),
                 WS_TRANSPORT_KEY_PREFIX
         );
+        this.metricsConfig = getMetricsSettings();
     }
 
     public static Settings getInstance() {
@@ -111,6 +122,11 @@ public final class EnvironmentSettings implements Settings {
         return webSocketTransportConfig;
     }
 
+    @Override
+    public MetricsSettings metrics() {
+        return metricsConfig;
+    }
+
     private TransportSettings getTransportSettings(TransportType transportType,
                                                    TransportSettings defaultSettings,
                                                    String prefix) {
@@ -121,12 +137,24 @@ public final class EnvironmentSettings implements Settings {
         return new TransportSettingsImpl(transportType, enable, port, useTLS, instances);
     }
 
+    private MetricsSettings getMetricsSettings() {
+        boolean enable = booleanValue(METRICS_ENABLED_KEY, defaultSettings.metrics()::enable);
+        boolean exportJvmMetrics = booleanValue(METRICS_EXPORT_JVM_METRICS_KEY, defaultSettings.metrics()::exportJvmMetrics);
+        String path = value(METRICS_PATH_KEY, defaultSettings.metrics()::endpoint);
+        int port = intValue(METRICS_PORT_KEY, defaultSettings.metrics()::port);
+        return new MetricsSettingsImpl(enable, exportJvmMetrics, path, port);
+    }
+
     private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {
         return value(key).map(Integer::parseInt).orElseGet(defaultValueSupplier);
     }
 
     private boolean booleanValue(String key, Supplier<? extends Boolean> defaultValueSupplier) {
         return value(key).map(Boolean::parseBoolean).orElseGet(defaultValueSupplier);
+    }
+
+    private String value(String key, Supplier<? extends String> defaultValueSupplier) {
+        return value(key).orElseGet(defaultValueSupplier);
     }
 
     private Optional<String> value(String key) {
