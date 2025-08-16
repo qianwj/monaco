@@ -24,11 +24,11 @@ public final class DefaultSettings implements Settings {
 
     private static final DefaultSettings INSTANCE = new DefaultSettings();
 
-    private final TransportSettings tcpTransportConfig = new TransportSettingsImpl(TransportType.TCP, true, 1883, false, 1);
+    private final TransportSettings tcpTransportConfig = new TransportSettings(TransportType.TCP, true, 1883, false, 1);
 
-    private final TransportSettings webSocketTransportConfig = new TransportSettingsImpl(TransportType.WS, false, 8883, false, 1);
+    private final TransportSettings webSocketTransportConfig = new TransportSettings(TransportType.WS, false, 8883, false, 1);
 
-    private final MetricsSettings metricsConfig = new MetricsSettingsImpl(false, false, "/metrics", 9095);
+    private final MetricsSettings metricsConfig = new MetricsSettings(false, false, "/metrics", 9095);
 
     private DefaultSettings() {}
 

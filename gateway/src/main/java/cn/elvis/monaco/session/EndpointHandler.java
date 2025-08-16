@@ -82,7 +82,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     @Override
     public void handle(MqttEndpoint endpoint) {
-        endpoint.autoKeepAlive(false);
+        initEndpoint(endpoint);
         if (StringUtil.isNullOrEmpty(endpoint.clientIdentifier())) {
             endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED);
             return;
@@ -189,5 +189,11 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             log.error("endpoint occur exception" + e.getLocalizedMessage());
             e.printStackTrace(System.err);
         });
+    }
+
+    private void initEndpoint(MqttEndpoint endpoint) {
+        endpoint.autoKeepAlive(false)
+                .publishAutoAck(false)
+                .subscriptionAutoAck(false);
     }
 }

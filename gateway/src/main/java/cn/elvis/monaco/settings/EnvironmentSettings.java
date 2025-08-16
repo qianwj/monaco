@@ -15,39 +15,39 @@ public final class EnvironmentSettings implements Settings {
 
     private static final String KEY_PREFIX = "MONACO_";
 
-    private static final String MAXIMUM_SESSION_COUNT_KEY = "MAXIMUM_SESSION_COUNT";
+    static final String MAXIMUM_SESSION_COUNT_KEY = "MAXIMUM_SESSION_COUNT";
 
-    private static final String DEFAULT_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "DEFAULT_SESSION_EXPIRY_INTERVAL";
+    static final String DEFAULT_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "DEFAULT_SESSION_EXPIRY_INTERVAL";
 
-    private static final String MAX_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "MAX_SESSION_EXPIRY_INTERVAL";
+    static final String MAX_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "MAX_SESSION_EXPIRY_INTERVAL";
 
-    private static final String DEFAULT_RECEIVE_MAXIMUM_KEY = KEY_PREFIX + "DEFAULT_RECEIVE_MAXIMUM";
+    static final String DEFAULT_RECEIVE_MAXIMUM_KEY = KEY_PREFIX + "DEFAULT_RECEIVE_MAXIMUM";
 
-    private static final String TOPIC_ALIAS_MAXIMUM_KEY = KEY_PREFIX + "TOPIC_ALIAS_MAXIMUM";
+    static final String TOPIC_ALIAS_MAXIMUM_KEY = KEY_PREFIX + "TOPIC_ALIAS_MAXIMUM";
 
-    private static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
+    static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
 
-    private static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
+    static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
 
-    private static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
+    static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
 
-    private static final String WS_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "WS_TRANSPORT_";
+    static final String WS_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "WS_TRANSPORT_";
 
-    private static final String TRANSPORT_ENABLE_KEY = "ENABLE";
+    static final String TRANSPORT_ENABLE_KEY = "ENABLE";
 
-    private static final String TRANSPORT_PORT_KEY = "PORT";
+    static final String TRANSPORT_PORT_KEY = "PORT";
 
-    private static final String TRANSPORT_USE_TLS_KEY = "USE_TLS";
+    static final String TRANSPORT_USE_TLS_KEY = "USE_TLS";
 
-    private static final String TRANSPORT_INSTANCES_KEY = "INSTANCES";
+    static final String TRANSPORT_INSTANCES_KEY = "INSTANCES";
 
-    private static final String METRICS_ENABLED_KEY = KEY_PREFIX + "METRICS_ENABLE";
+    static final String METRICS_ENABLED_KEY = KEY_PREFIX + "METRICS_ENABLE";
 
-    private static final String METRICS_EXPORT_JVM_METRICS_KEY = KEY_PREFIX + "METRICS_EXPORT_JVM_METRICS";
+    static final String METRICS_EXPORT_JVM_METRICS_KEY = KEY_PREFIX + "METRICS_EXPORT_JVM_METRICS";
 
-    private static final String METRICS_PORT_KEY = KEY_PREFIX + "METRICS_PORT";
+    static final String METRICS_PORT_KEY = KEY_PREFIX + "METRICS_PORT";
 
-    private static final String METRICS_PATH_KEY = KEY_PREFIX + "METRICS_PATH";
+    static final String METRICS_ENDPOINT_KEY = KEY_PREFIX + "METRICS_ENDPOINT";
 
     private final Settings defaultSettings = DefaultSettings.getInstance();
 
@@ -79,37 +79,37 @@ public final class EnvironmentSettings implements Settings {
 
     @Override
     public int maximumSessionCount() {
-        return intValue(MAXIMUM_SESSION_COUNT_KEY, defaultSettings::maximumSessionCount);
+        return Settings.intValue(MAXIMUM_SESSION_COUNT_KEY, System::getenv, defaultSettings::maximumSessionCount);
     }
 
     @Override
     public int defaultSessionExpiryInterval() {
-        return intValue(DEFAULT_SESSION_EXPIRY_INTERVAL_KEY, defaultSettings::defaultSessionExpiryInterval);
+        return Settings.intValue(DEFAULT_SESSION_EXPIRY_INTERVAL_KEY, System::getenv, defaultSettings::defaultSessionExpiryInterval);
     }
 
     @Override
     public int maxSessionExpiryInterval() {
-        return intValue(MAX_SESSION_EXPIRY_INTERVAL_KEY, defaultSettings::maxSessionExpiryInterval);
+        return Settings.intValue(MAX_SESSION_EXPIRY_INTERVAL_KEY, System::getenv, defaultSettings::maxSessionExpiryInterval);
     }
 
     @Override
     public int defaultReceiveMaximum() {
-        return intValue(DEFAULT_RECEIVE_MAXIMUM_KEY, defaultSettings::defaultReceiveMaximum);
+        return Settings.intValue(DEFAULT_RECEIVE_MAXIMUM_KEY, System::getenv, defaultSettings::defaultReceiveMaximum);
     }
 
     @Override
     public boolean retainAvailable() {
-        return booleanValue(RETAIN_AVAILABLE_KEY, defaultSettings::retainAvailable);
+        return Settings.booleanValue(RETAIN_AVAILABLE_KEY, System::getenv, defaultSettings::retainAvailable);
     }
 
     @Override
     public int topicAliasMaximum() {
-        return intValue(TOPIC_ALIAS_MAXIMUM_KEY, defaultSettings::topicAliasMaximum);
+        return Settings.intValue(TOPIC_ALIAS_MAXIMUM_KEY, System::getenv, defaultSettings::topicAliasMaximum);
     }
 
     @Override
     public int publishQueueMaximum() {
-        return intValue(PUBLISH_QUEUE_MAXIMUM_KEY, defaultSettings::publishQueueMaximum);
+        return Settings.intValue(PUBLISH_QUEUE_MAXIMUM_KEY, System::getenv, defaultSettings::publishQueueMaximum);
     }
 
     @Override
@@ -130,35 +130,18 @@ public final class EnvironmentSettings implements Settings {
     private TransportSettings getTransportSettings(TransportType transportType,
                                                    TransportSettings defaultSettings,
                                                    String prefix) {
-        boolean enable = booleanValue(prefix + TRANSPORT_ENABLE_KEY, defaultSettings::enable);
-        int port = intValue(prefix + TRANSPORT_PORT_KEY, defaultSettings::port);
-        boolean useTLS = booleanValue(prefix + TRANSPORT_USE_TLS_KEY, defaultSettings::useTLS);
-        int instances = intValue(prefix + TRANSPORT_INSTANCES_KEY, defaultSettings::instances);
-        return new TransportSettingsImpl(transportType, enable, port, useTLS, instances);
+        boolean enable = Settings.booleanValue(prefix + TRANSPORT_ENABLE_KEY, System::getenv, defaultSettings::enable);
+        int port = Settings.intValue(prefix + TRANSPORT_PORT_KEY, System::getenv, defaultSettings::port);
+        boolean useTLS = Settings.booleanValue(prefix + TRANSPORT_USE_TLS_KEY, System::getenv, defaultSettings::useTLS);
+        int instances = Settings.intValue(prefix + TRANSPORT_INSTANCES_KEY, System::getenv, defaultSettings::instances);
+        return new TransportSettings(transportType, enable, port, useTLS, instances);
     }
 
     private MetricsSettings getMetricsSettings() {
-        boolean enable = booleanValue(METRICS_ENABLED_KEY, defaultSettings.metrics()::enable);
-        boolean exportJvmMetrics = booleanValue(METRICS_EXPORT_JVM_METRICS_KEY, defaultSettings.metrics()::exportJvmMetrics);
-        String path = value(METRICS_PATH_KEY, defaultSettings.metrics()::endpoint);
-        int port = intValue(METRICS_PORT_KEY, defaultSettings.metrics()::port);
-        return new MetricsSettingsImpl(enable, exportJvmMetrics, path, port);
-    }
-
-    private int intValue(String key, Supplier<? extends Integer> defaultValueSupplier) {
-        return value(key).map(Integer::parseInt).orElseGet(defaultValueSupplier);
-    }
-
-    private boolean booleanValue(String key, Supplier<? extends Boolean> defaultValueSupplier) {
-        return value(key).map(Boolean::parseBoolean).orElseGet(defaultValueSupplier);
-    }
-
-    private String value(String key, Supplier<? extends String> defaultValueSupplier) {
-        return value(key).orElseGet(defaultValueSupplier);
-    }
-
-    private Optional<String> value(String key) {
-        return Optional.ofNullable(System.getenv(key))
-                .flatMap(v -> v.isBlank() ? Optional.empty() : Optional.of(v));
+        boolean enable = Settings.booleanValue(METRICS_ENABLED_KEY, System::getenv, defaultSettings.metrics()::enable);
+        boolean exportJvmMetrics = Settings.booleanValue(METRICS_EXPORT_JVM_METRICS_KEY, System::getenv, defaultSettings.metrics()::exportJvmMetrics);
+        String path = Settings.value(METRICS_ENDPOINT_KEY, System::getenv, defaultSettings.metrics()::endpoint);
+        int port = Settings.intValue(METRICS_PORT_KEY, System::getenv, defaultSettings.metrics()::port);
+        return new MetricsSettings(enable, exportJvmMetrics, path, port);
     }
 }

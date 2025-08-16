@@ -1,25 +1,38 @@
 package cn.elvis.monaco.settings;
 
+import io.vertx.core.http.HttpServerOptions;
 import io.vertx.micrometer.MicrometerMetricsOptions;
+import io.vertx.micrometer.VertxPrometheusOptions;
 
-/**
- * Metrics Settings
- *
- * @author qianwj
- * @since  0.0.1
- */
-public interface MetricsSettings {
+import java.util.StringJoiner;
 
-    boolean enable();
+public record MetricsSettings(
+        boolean enable,
+        boolean exportJvmMetrics,
+        String endpoint,
+        int port) {
 
-    boolean exportJvmMetrics();
+    public MicrometerMetricsOptions options() {
+        return new MicrometerMetricsOptions()
+                .setPrometheusOptions(
+                        new VertxPrometheusOptions()
+                                .setEnabled(enable)
+                                .setStartEmbeddedServer(enable)
+                                .setEmbeddedServerOptions(new HttpServerOptions().setPort(port))
+                                .setEmbeddedServerEndpoint(endpoint)
+                )
+                .setEnabled(enable)
+                .setNettyMetricsEnabled(enable)
+                .setJvmMetricsEnabled(exportJvmMetrics);
+    }
 
-    /**
-     * Exposed metrics url endpoint
-     */
-    String endpoint();
-
-    int port();
-
-    MicrometerMetricsOptions options();
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", "{", "}")
+                .add("enable: " + enable)
+                .add("exportJvmMetrics: " + exportJvmMetrics)
+                .add("endpoint: '" + endpoint + "'")
+                .add("port: " + port)
+                .toString();
+    }
 }
