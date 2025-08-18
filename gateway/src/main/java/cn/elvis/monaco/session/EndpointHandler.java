@@ -110,10 +110,10 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             return Optional.empty();
         }
         log.info("Client session [" + endpoint.clientIdentifier() + "] connected. Store will? " + endpoint.will().isWillFlag());
-//        if (endpoint.will().isWillFlag()) {
-//            WillMessage will = WillMessage.create(endpoint.will());
-//            willManager.addWill(session.identifier(), will);
-//        }
+        if (endpoint.will().isWillFlag()) {
+            WillMessage will = WillMessage.create(endpoint.will());
+            willManager.addWill(endpoint.clientIdentifier(), will);
+        }
         return clientSessionManager.get(endpoint.clientIdentifier());
     }
 

@@ -28,6 +28,12 @@ public interface Settings {
 
     int topicAliasMaximum();
 
+    boolean wildcardSubscriptionAvailable();
+
+    int maximumQualityOfService();
+
+    boolean subscriptionIdentifierAvailable();
+
     int publishQueueMaximum();
 
     boolean retainAvailable();

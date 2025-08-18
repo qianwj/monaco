@@ -107,12 +107,13 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             properties
                     .withProperty(MqttPropertyType.SESSION_EXPIRY_INTERVAL, sessionExpiryInterval)
                     .withProperty(MqttPropertyType.RECEIVE_MAXIMUM, receiveMaximum)
-                    .withProperty(MqttPropertyType.MAXIMUM_QOS, 2)
+                    .withProperty(MqttPropertyType.MAXIMUM_QOS, settings.maximumQualityOfService())
                     .withAvailableOption(MqttPropertyType.RETAIN_AVAILABLE, settings.retainAvailable())
                     .withProperty(MqttPropertyType.MAXIMUM_PACKET_SIZE, maximumPacketSize)
-                    .withProperty(MqttPropertyType.TOPIC_ALIAS_MAXIMUM, topicAliasMaximum);
-            // todo：Wildcard Subscription Available
-            // todo: Subscription Identifiers Available
+                    .withProperty(MqttPropertyType.TOPIC_ALIAS_MAXIMUM, topicAliasMaximum)
+                    .withAvailableOption(MqttPropertyType.WILDCARD_SUBSCRIPTION_AVAILABLE, settings.wildcardSubscriptionAvailable())
+                    .withAvailableOption(MqttPropertyType.SUBSCRIPTION_IDENTIFIER_AVAILABLE, settings.subscriptionIdentifierAvailable())
+            ;
             // todo: Shared Subscription Available
             // todo: Server Keep Alive
             // todo: Response Information

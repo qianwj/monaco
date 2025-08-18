@@ -77,6 +77,21 @@ public final class DefaultSettings implements Settings {
     }
 
     @Override
+    public boolean wildcardSubscriptionAvailable() {
+        return false;
+    }
+
+    @Override
+    public int maximumQualityOfService() {
+        return 0;
+    }
+
+    @Override
+    public boolean subscriptionIdentifierAvailable() {
+        return false;
+    }
+
+    @Override
     public int publishQueueMaximum() {
         return PUBLISH_QUEUE_MAXIMUM;
     }

@@ -33,6 +33,12 @@ public final class EnvironmentSettings implements Settings {
 
     static final String RETAIN_AVAILABLE_KEY = KEY_PREFIX + "RETAIN_AVAILABLE";
 
+    static final String MAXIMUM_QOS_KEY = KEY_PREFIX + "MAXIMUM_QOS";
+
+    static final String WILDCARD_SUBSCRIPTION_AVAILABLE_KEY = KEY_PREFIX + "WILDCARD_SUBSCRIPTION_AVAILABLE";
+
+    static final String SUBSCRIPTION_IDENTIFIER_AVAILABLE_KEY = KEY_PREFIX + "SUBSCRIPTION_IDENTIFIER_AVAILABLE";
+
     static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
 
     static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
@@ -126,6 +132,21 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public int topicAliasMaximum() {
         return Settings.intValue(TOPIC_ALIAS_MAXIMUM_KEY, System::getenv, defaultSettings::topicAliasMaximum);
+    }
+
+    @Override
+    public boolean wildcardSubscriptionAvailable() {
+        return Settings.booleanValue(WILDCARD_SUBSCRIPTION_AVAILABLE_KEY, System::getenv, defaultSettings::wildcardSubscriptionAvailable);
+    }
+
+    @Override
+    public int maximumQualityOfService() {
+        return Settings.intValue(MAXIMUM_QOS_KEY, System::getenv, defaultSettings::maximumQualityOfService);
+    }
+
+    @Override
+    public boolean subscriptionIdentifierAvailable() {
+        return Settings.booleanValue(SUBSCRIPTION_IDENTIFIER_AVAILABLE_KEY, System::getenv, defaultSettings::subscriptionIdentifierAvailable);
     }
 
     @Override

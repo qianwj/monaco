@@ -91,6 +91,21 @@ public final class PropertiesSettings implements Settings {
     }
 
     @Override
+    public boolean wildcardSubscriptionAvailable() {
+        return booleanValue(EnvironmentSettings.WILDCARD_SUBSCRIPTION_AVAILABLE_KEY, defaultSettings::wildcardSubscriptionAvailable);
+    }
+
+    @Override
+    public int maximumQualityOfService() {
+        return intValue(EnvironmentSettings.MAXIMUM_QOS_KEY, defaultSettings::maximumQualityOfService);
+    }
+
+    @Override
+    public boolean subscriptionIdentifierAvailable() {
+        return booleanValue(EnvironmentSettings.SUBSCRIPTION_IDENTIFIER_AVAILABLE_KEY, defaultSettings::subscriptionIdentifierAvailable);
+    }
+
+    @Override
     public int publishQueueMaximum() {
         return intValue(EnvironmentSettings.PUBLISH_QUEUE_MAXIMUM_KEY, defaultSettings::publishQueueMaximum);
     }
