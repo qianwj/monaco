@@ -62,19 +62,19 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 
     @Override
     public MqttSubAckReasonCode subscribe(ClientSession clientSession, Subscription subscription) {
-        List<Subscription> subscribers = store.getOrDefault(subscription.topicFilter(), new CopyOnWriteArrayList<>());
-        subscribers.add(subscription);
-        store.put(subscription.topicFilter(), subscribers);
-        var extend = new SubscriptionExtend(
-                clientSession.identifier(),
-                subscription.topicFilter(),
-                clientSession.isReSubscribed(subscription.topicFilter()),
-                subscription.noLocal(),
-                subscription.retainAsPublished(),
-                subscription.retainedHandlingPolicy()
-        );
-        clientSession.subscribe(subscription);
-        eventBus.publish(ChannelKeys.CLIENT_SESSION_SUBSCRIBE, extend);
+//        List<Subscription> subscribers = store.getOrDefault(subscription.topic().filter(), new CopyOnWriteArrayList<>());
+//        subscribers.add(subscription);
+//        store.put(subscription.topicFilter(), subscribers);
+//        var extend = new SubscriptionExtend(
+//                clientSession.identifier(),
+//                subscription.topicFilter(),
+//                clientSession.isReSubscribed(subscription.topicFilter()),
+//                subscription.noLocal(),
+//                subscription.retainAsPublished(),
+//                subscription.retainedHandlingPolicy()
+//        );
+//        clientSession.subscribe(subscription);
+//        eventBus.publish(ChannelKeys.CLIENT_SESSION_SUBSCRIBE, extend);
         return MqttSubAckReasonCode.qosGranted(subscription.qos());
     }
 

@@ -1,10 +1,11 @@
 package cn.elvis.monaco.entity.events;
 
+import cn.elvis.monaco.topics.Topic;
 import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
 
 public record SubscriptionExtend(
         String clientId,
-        String topicFilter,
+        Topic topic,
         boolean reSubscribe,
         boolean noLocal,
         boolean retainAsPublished,

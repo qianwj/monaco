@@ -1,6 +1,7 @@
 package cn.elvis.monaco.entity;
 
 import cn.elvis.monaco.session.ClientSession;
+import cn.elvis.monaco.topics.Topic;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
 import io.vertx.mqtt.MqttTopicSubscription;
@@ -13,7 +14,7 @@ import io.vertx.mqtt.MqttTopicSubscription;
  */
 public interface Subscription {
 
-    String topicFilter();
+    Topic topic();
 
     MqttQoS qos();
 

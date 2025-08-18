@@ -149,15 +149,15 @@ public final class DefaultClientSession implements ClientSession {
 
     @Override
     public void unsubscribe(String topicFilter) {
-        subscriptions.removeIf(subscription -> subscription.topicFilter().equals(topicFilter));
+//        subscriptions.removeIf(subscription -> subscription.topicFilter().equals(topicFilter));
     }
 
     @Override
     public boolean isReSubscribed(String topicFilter) {
         for (Subscription subscription : subscriptions) {
-            if (Objects.equals(topicFilter, subscription.topicFilter())) {
-                return true;
-            }
+//            if (Objects.equals(topicFilter, subscription.topicFilter())) {
+//                return true;
+//            }
         }
         return false;
     }

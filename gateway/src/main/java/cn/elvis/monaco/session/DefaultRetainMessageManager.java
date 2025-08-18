@@ -36,19 +36,19 @@ public final class DefaultRetainMessageManager implements RetainMessageManager {
                     log.info("No local retain message.");
                     return;
                 }
-                Optional.ofNullable(store.get(extend.topicFilter()))
-                        .ifPresent(message -> {
-                            var publishMessage = message.setRetain(extend.retainAsPublished());
-                            switch (extend.retainedHandlingPolicy()) {
-                                case SEND_AT_SUBSCRIBE -> eventBus.publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, publishMessage);
-                                case SEND_AT_SUBSCRIBE_IF_NOT_YET_EXISTS -> {
-                                    if (!extend.reSubscribe()) {
-                                        eventBus.publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, publishMessage);
-                                    }
-                                }
-                                case DONT_SEND_AT_SUBSCRIBE -> {}
-                            }
-                        });
+//                Optional.ofNullable(store.get(extend.topicFilter()))
+//                        .ifPresent(message -> {
+//                            var publishMessage = message.setRetain(extend.retainAsPublished());
+//                            switch (extend.retainedHandlingPolicy()) {
+//                                case SEND_AT_SUBSCRIBE -> eventBus.publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, publishMessage);
+//                                case SEND_AT_SUBSCRIBE_IF_NOT_YET_EXISTS -> {
+//                                    if (!extend.reSubscribe()) {
+//                                        eventBus.publish(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, publishMessage);
+//                                    }
+//                                }
+//                                case DONT_SEND_AT_SUBSCRIBE -> {}
+//                            }
+//                        });
             });
         }
     }

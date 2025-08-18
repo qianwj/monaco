@@ -1,6 +1,8 @@
 package cn.elvis.monaco.entity;
 
 import cn.elvis.monaco.session.ClientSession;
+import cn.elvis.monaco.topics.Topic;
+import cn.elvis.monaco.topics.Topics;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
 import io.vertx.mqtt.MqttTopicSubscription;
@@ -17,7 +19,7 @@ public final class SubscriptionImpl implements Subscription {
 
     private final ClientSession clientSession;
 
-    private final String topicFilter;
+    private final Topic topic;
 
     private final MqttQoS qos;
 
@@ -31,7 +33,7 @@ public final class SubscriptionImpl implements Subscription {
         Objects.requireNonNull(clientSession, "clientSession must not be null");
         Objects.requireNonNull(subscription, "subscription must not be null");
         this.clientSession = clientSession;
-        this.topicFilter = subscription.topicName();
+        this.topic = Topics.createTopic(subscription.topicName());
         this.qos = subscription.qualityOfService();
         this.noLocal = subscription.subscriptionOption().isNoLocal();
         this.retainAsPublished = subscription.subscriptionOption().isRetainAsPublished();
@@ -41,8 +43,8 @@ public final class SubscriptionImpl implements Subscription {
     }
 
     @Override
-    public String topicFilter() {
-        return topicFilter;
+    public Topic topic() {
+        return topic;
     }
 
     @Override
