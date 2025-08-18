@@ -65,7 +65,7 @@ public final class MonacoServer {
 
     private void init() {
         final TopicAliasStore topicAliasStore = new MemoryTopicAliasStore();
-        final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx);
+        final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx, topicAliasStore);
         final PublisherManager publisherManager = new DefaultPublisherManager(settings, topicAliasStore, vertx);
         final SubscriberManager subscriberManager = new DefaultSubscriberManager(vertx.eventBus());
         final WillManager willManager = new DefaultWillManager(vertx.eventBus());

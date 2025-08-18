@@ -44,15 +44,14 @@ public final class DefaultClientSession implements ClientSession {
     private volatile boolean closed;
 
     public DefaultClientSession(MqttEndpoint endpoint,
-                                Settings settings) {
+                                int expiryInterval,
+                                int receiveMaximum) {
         this.endpoint = endpoint;
-        this.expiredTime = Instant.now()
-                .plusMillis(sessionExpiryInterval(settings));
-        this.processingQueue = new ArrayBlockingQueue<>(receiveMaximum(settings));
+        this.expiredTime = Instant.now().plusMillis(expiryInterval);
+        this.processingQueue = new ArrayBlockingQueue<>(receiveMaximum);
     }
 
-    public void connect() {
-        endpoint.accept(true);
+    public void init() {
         Thread.ofVirtual().name("client-queue-worker-" + endpoint.clientIdentifier())
                 .uncaughtExceptionHandler((t, e) -> {
                         log.error("[" + t.getName() + "] Unexpected exception", e);
@@ -118,14 +117,6 @@ public final class DefaultClientSession implements ClientSession {
     public void close() {
         closed = true;
         endpoint.close();
-    }
-
-    private int sessionExpiryInterval(Settings settings) {
-        int sessionExpiryInterval = intValue(MqttPropertyType.SESSION_EXPIRY_INTERVAL, settings::defaultSessionExpiryInterval);
-        if (sessionExpiryInterval > settings.maxSessionExpiryInterval()) {
-            return settings.defaultSessionExpiryInterval();
-        }
-        return sessionExpiryInterval;
     }
 
     private int receiveMaximum(Settings settings) {

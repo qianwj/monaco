@@ -17,11 +17,17 @@ public final class EnvironmentSettings implements Settings {
 
     static final String MAXIMUM_SESSION_COUNT_KEY = "MAXIMUM_SESSION_COUNT";
 
+    static final String SERVER_ASSIGNED_CLIENT_IDENTIFIER_KEY = "SERVER_ASSIGNED_CLIENT_IDENTIFIER";
+
+    static final String MAXIMUM_CLIENT_IDENTIFIER_LENGTH_KEY = "MAXIMUM_CLIENT_IDENTIFIER_LENGTH";
+
     static final String DEFAULT_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "DEFAULT_SESSION_EXPIRY_INTERVAL";
 
     static final String MAX_SESSION_EXPIRY_INTERVAL_KEY = KEY_PREFIX + "MAX_SESSION_EXPIRY_INTERVAL";
 
     static final String DEFAULT_RECEIVE_MAXIMUM_KEY = KEY_PREFIX + "DEFAULT_RECEIVE_MAXIMUM";
+
+    static final String MAX_RECEIVE_MAXIMUM_KEY = KEY_PREFIX + "MAX_RECEIVE_MAXIMUM";
 
     static final String TOPIC_ALIAS_MAXIMUM_KEY = KEY_PREFIX + "TOPIC_ALIAS_MAXIMUM";
 
@@ -83,6 +89,16 @@ public final class EnvironmentSettings implements Settings {
     }
 
     @Override
+    public boolean serverAssignedClientIdentifier() {
+        return Settings.booleanValue(SERVER_ASSIGNED_CLIENT_IDENTIFIER_KEY, System::getenv, defaultSettings::serverAssignedClientIdentifier);
+    }
+
+    @Override
+    public int maximumClientIdentifierLength() {
+        return Settings.intValue(MAXIMUM_CLIENT_IDENTIFIER_LENGTH_KEY, System::getenv, defaultSettings::maximumClientIdentifierLength);
+    }
+
+    @Override
     public int defaultSessionExpiryInterval() {
         return Settings.intValue(DEFAULT_SESSION_EXPIRY_INTERVAL_KEY, System::getenv, defaultSettings::defaultSessionExpiryInterval);
     }
@@ -95,6 +111,11 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public int defaultReceiveMaximum() {
         return Settings.intValue(DEFAULT_RECEIVE_MAXIMUM_KEY, System::getenv, defaultSettings::defaultReceiveMaximum);
+    }
+
+    @Override
+    public int maxReceiveMaximum() {
+        return Settings.intValue(MAX_RECEIVE_MAXIMUM_KEY, System::getenv, defaultSettings::maxReceiveMaximum);
     }
 
     @Override

@@ -1,13 +1,17 @@
 package cn.elvis.monaco.session;
 
+import cn.elvis.monaco.entity.ConnectAcknowledge;
 import cn.elvis.monaco.entity.Subscription;
 import cn.elvis.monaco.entity.WillMessage;
 import cn.elvis.monaco.manager.*;
 import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.settings.Settings;
+import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
+import cn.elvis.monaco.utils.ULID;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.netty.handler.codec.mqtt.MqttProperties;
+import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Handler;
 import io.vertx.core.internal.logging.Logger;
@@ -21,6 +25,7 @@ import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -82,29 +87,56 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     @Override
     public void handle(MqttEndpoint endpoint) {
-        initEndpoint(endpoint);
-        if (StringUtil.isNullOrEmpty(endpoint.clientIdentifier())) {
-            endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED);
+        var session = connect(endpoint);
+        if (session.isEmpty()) {
             return;
         }
-        log.info("New client incoming: " + endpoint.clientIdentifier() + ", clean start: " + endpoint.isCleanSession());
-        ClientSession session = new DefaultClientSession(endpoint, settings);
-        MqttConnectReturnCode returnCode = clientSessionManager.register(session);
-        if (returnCode != MqttConnectReturnCode.CONNECTION_ACCEPTED) {
-            endpoint.reject(returnCode);
-            return;
+        disconnect(endpoint);
+        subscribe(endpoint, session.get());
+        publish(endpoint);
+
+        endpoint.pingHandler(v -> {
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
+            endpoint.pong();
+        }).exceptionHandler(e -> {
+            log.error("endpoint occur exception" + e.getLocalizedMessage());
+            e.printStackTrace(System.err);
+        });
+    }
+
+    private Optional<ClientSession> connect(MqttEndpoint endpoint) {
+        ConnectAcknowledge ack = clientSessionManager.register(endpoint);
+        if (ack.reject()) {
+            return Optional.empty();
         }
-        Metrics.addClient();
-        int topicAliasMaximum = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.MqttPropertyType.TOPIC_ALIAS_MAXIMUM, settings.defaultReceiveMaximum());
-        publisherManager.setTopicAliasMaximum(session.identifier(), topicAliasMaximum);
-        log.info("Client session [" + endpoint.clientIdentifier() + "] connected. store will? " + endpoint.will().isWillFlag());
-        if (endpoint.will().isWillFlag()) {
-            WillMessage will = WillMessage.create(endpoint.will());
-            willManager.addWill(session.identifier(), will);
-        }
+        log.info("Client session [" + endpoint.clientIdentifier() + "] connected. Store will? " + endpoint.will().isWillFlag());
+//        if (endpoint.will().isWillFlag()) {
+//            WillMessage will = WillMessage.create(endpoint.will());
+//            willManager.addWill(session.identifier(), will);
+//        }
+        return clientSessionManager.get(endpoint.clientIdentifier());
+    }
+
+    private void disconnect(MqttEndpoint endpoint) {
+        endpoint.closeHandler(v -> {
+            clientSessionManager.unregister(endpoint.clientIdentifier(), false);
+            log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
+            Metrics.removeClient();
+        }).disconnectMessageHandler(packet -> {
+            log.info("client[" + endpoint.clientIdentifier() + "] receive DISCONNECT packet: " + packet);
+            if (packet.code() == MqttDisconnectReasonCode.NORMAL) {
+                clientSessionManager.unregister(endpoint.clientIdentifier(), true);
+                return;
+            }
+            clientSessionManager.unregister(endpoint.clientIdentifier(), false);
+            Metrics.removeClient();
+        });
+    }
+
+    private void subscribe(MqttEndpoint endpoint, ClientSession session) {
         endpoint.subscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive SUBSCRIBE packet: " + packet);
-            clientSessionManager.heartbeat(session.identifier());
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             List<MqttSubAckReasonCode> reasonCodes = new ArrayList<>();
             for (MqttTopicSubscription mqttTopicSubscription : packet.topicSubscriptions()) {
                 var subscription = Subscription.of(session, mqttTopicSubscription);
@@ -112,18 +144,20 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
                 reasonCodes.add(reasonCode);
             }
             endpoint.subscribeAcknowledge(packet.messageId(), reasonCodes, packet.properties());
-        });
-        endpoint.unsubscribeHandler(packet -> {
+        }).unsubscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive UNSUB packet: " + packet);
-            clientSessionManager.heartbeat(session.identifier());
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             var ackCodes = packet.topics()
                     .stream()
                     .map(topic -> subscriberManager.unsubscribe(session, topic))
                     .toList();
             endpoint.unsubscribeAcknowledge(packet.messageId(), ackCodes, packet.properties());
         });
+    }
+
+    private void publish(MqttEndpoint endpoint) {
         endpoint.publishHandler(packet -> {
-            clientSessionManager.heartbeat(session.identifier());
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
             publisherManager.publish(endpoint, packet, subscriberManager::exists).map(message -> {
                 if (message.retain()) {
@@ -134,9 +168,8 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
                 publisherManager.reject(endpoint, ex, packet);
                 log.error("Failed to publish packet: ", ex);
             });
-        });
-        endpoint.publishReceivedHandler(messageId -> {
-            clientSessionManager.heartbeat(session.identifier());
+        }).publishReceivedHandler(messageId -> {
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + messageId);
             var receivedState = messageStateStore.getOrDefault(messageId, new ConcurrentHashMap<>());
             var received = receivedState.getOrDefault(endpoint.clientIdentifier(), false);
@@ -147,17 +180,15 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             receivedState.put(endpoint.clientIdentifier(), true);
             endpoint.publishRelease(messageId);
             messageStateStore.put(messageId, receivedState);
-        });
-        endpoint.publishReleaseHandler(messageId -> {
-            clientSessionManager.heartbeat(session.identifier());
+        }).publishReleaseHandler(messageId -> {
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREL packet: " + messageId);
             var messageState = messageStateStore.get(messageId);
             if (messageState == null || messageState.isEmpty()) {
                 endpoint.publishComplete(messageId);
             }
-        });
-        endpoint.publishCompletionHandler(messageId -> {
-            clientSessionManager.heartbeat(session.identifier());
+        }).publishCompletionHandler(messageId -> {
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
             var receiveState = messageStateStore.get(messageId);
             if (receiveState == null || receiveState.isEmpty()) {
@@ -167,33 +198,5 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             }
             receiveState.remove(endpoint.clientIdentifier());
         });
-        endpoint.pingHandler(v -> {
-            clientSessionManager.heartbeat(session.identifier());
-            endpoint.pong();
-        });
-        endpoint.closeHandler(v -> {
-            clientSessionManager.unregister(session.identifier(), false);
-            log.info("client[" + endpoint.clientIdentifier() + "] receive CLOSE packet.");
-            Metrics.removeClient();
-        });
-        endpoint.disconnectMessageHandler(packet -> {
-            log.info("client[" + endpoint.clientIdentifier() + "] receive DISCONNECT packet: " + packet);
-            if (packet.code() == MqttDisconnectReasonCode.NORMAL) {
-                clientSessionManager.unregister(session.identifier(), true);
-                return;
-            }
-            clientSessionManager.unregister(session.identifier(), false);
-            Metrics.removeClient();
-        });
-        endpoint.exceptionHandler(e -> {
-            log.error("endpoint occur exception" + e.getLocalizedMessage());
-            e.printStackTrace(System.err);
-        });
-    }
-
-    private void initEndpoint(MqttEndpoint endpoint) {
-        endpoint.autoKeepAlive(false)
-                .publishAutoAck(false)
-                .subscriptionAutoAck(false);
     }
 }

@@ -16,7 +16,7 @@ public final class DefaultSettings implements Settings {
 
     private static final int MAX_SESSION_EXPIRY_INTERVAL = DEFAULT_SESSION_EXPIRY_INTERVAL * 8;
 
-    private static final int DEFAULT_RECEIVE_MAXIMUM = 65535;
+    private static final int MAX_RECEIVE_MAXIMUM = 65535;
 
     private static final int TOPIC_ALIAS_MAXIMUM = 500;
 
@@ -42,6 +42,16 @@ public final class DefaultSettings implements Settings {
     }
 
     @Override
+    public boolean serverAssignedClientIdentifier() {
+        return false;
+    }
+
+    @Override
+    public int maximumClientIdentifierLength() {
+        return 23;
+    }
+
+    @Override
     public int defaultSessionExpiryInterval() {
         return DEFAULT_SESSION_EXPIRY_INTERVAL;
     }
@@ -53,7 +63,12 @@ public final class DefaultSettings implements Settings {
 
     @Override
     public int defaultReceiveMaximum() {
-        return DEFAULT_RECEIVE_MAXIMUM;
+        return 10;
+    }
+
+    @Override
+    public int maxReceiveMaximum() {
+        return MAX_RECEIVE_MAXIMUM;
     }
 
     @Override

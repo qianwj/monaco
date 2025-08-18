@@ -14,11 +14,17 @@ public interface Settings {
 
     int maximumSessionCount();
 
+    boolean serverAssignedClientIdentifier();
+
+    int maximumClientIdentifierLength();
+
     int defaultSessionExpiryInterval();
 
     int maxSessionExpiryInterval();
 
     int defaultReceiveMaximum();
+
+    int maxReceiveMaximum();
 
     int topicAliasMaximum();
 

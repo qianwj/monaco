@@ -56,6 +56,16 @@ public final class PropertiesSettings implements Settings {
     }
 
     @Override
+    public boolean serverAssignedClientIdentifier() {
+        return booleanValue(EnvironmentSettings.SERVER_ASSIGNED_CLIENT_IDENTIFIER_KEY, defaultSettings::serverAssignedClientIdentifier);
+    }
+
+    @Override
+    public int maximumClientIdentifierLength() {
+        return intValue(EnvironmentSettings.MAXIMUM_CLIENT_IDENTIFIER_LENGTH_KEY, defaultSettings::maximumClientIdentifierLength);
+    }
+
+    @Override
     public int defaultSessionExpiryInterval() {
         return intValue(EnvironmentSettings.DEFAULT_SESSION_EXPIRY_INTERVAL_KEY, defaultSettings::defaultSessionExpiryInterval);
     }
@@ -68,6 +78,11 @@ public final class PropertiesSettings implements Settings {
     @Override
     public int defaultReceiveMaximum() {
         return intValue(EnvironmentSettings.DEFAULT_RECEIVE_MAXIMUM_KEY, defaultSettings::defaultReceiveMaximum);
+    }
+
+    @Override
+    public int maxReceiveMaximum() {
+        return intValue(EnvironmentSettings.MAX_RECEIVE_MAXIMUM_KEY, defaultSettings::maxReceiveMaximum);
     }
 
     @Override

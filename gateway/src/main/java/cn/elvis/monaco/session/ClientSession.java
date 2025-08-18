@@ -12,7 +12,7 @@ import java.time.ZonedDateTime;
  */
 public interface ClientSession extends Subscriber {
 
-    void connect();
+    void init();
 
     /**
      * Method that return current client identifier.
