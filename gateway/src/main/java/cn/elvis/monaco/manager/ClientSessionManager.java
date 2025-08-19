@@ -49,9 +49,4 @@ public interface ClientSessionManager extends Manager {
     void heartbeat(String clientId);
 
     void cleanSession(String clientId);
-
-    /**
-     * @return current sessions count
-     */
-    int sessionCount();
 }

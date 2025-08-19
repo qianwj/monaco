@@ -12,12 +12,22 @@ import java.util.Objects;
  */
 public final class MqttPropertiesBuilder {
 
-    private final MqttProperties properties = new MqttProperties();
+    private final MqttProperties properties;
 
-    private MqttPropertiesBuilder() {}
+    private MqttPropertiesBuilder() {
+        this(new MqttProperties());
+    }
+
+    private MqttPropertiesBuilder(MqttProperties properties) {
+        this.properties = properties;
+    }
 
     public static MqttPropertiesBuilder create() {
         return new MqttPropertiesBuilder();
+    }
+
+    public static MqttPropertiesBuilder from(MqttProperties properties) {
+        return new MqttPropertiesBuilder(properties);
     }
 
     public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, String value) {

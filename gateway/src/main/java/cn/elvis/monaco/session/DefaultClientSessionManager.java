@@ -6,6 +6,7 @@ import cn.elvis.monaco.entity.events.ClientSessionClose;
 import cn.elvis.monaco.manager.ClientSessionManager;
 import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.settings.Settings;
+import cn.elvis.monaco.store.ClientSessionStore;
 import cn.elvis.monaco.store.TopicAliasStore;
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
@@ -34,28 +35,30 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultClientSessionManager.class);
 
-    private final Map<String, ClientSession> store = new ConcurrentHashMap<>();
-
     private final Settings settings;
 
     private final Vertx vertx;
 
     private final TopicAliasStore topicAliasStore;
 
+    private final ClientSessionStore clientSessionStore;
+
     private final long timerId;
 
     public DefaultClientSessionManager(Settings settings,
                                        Vertx vertx,
-                                       TopicAliasStore topicAliasStore) {
+                                       TopicAliasStore topicAliasStore,
+                                       ClientSessionStore clientSessionStore) {
         this.settings = settings;
         this.vertx = vertx;
         this.topicAliasStore = topicAliasStore;
+        this.clientSessionStore = clientSessionStore;
         this.timerId = vertx.setTimer(1000, id -> removeExpiredSessions());
     }
 
     @Override
     public boolean sessionPresent(String clientId) {
-        return store.containsKey(clientId);
+        return clientSessionStore.get(clientId).isPresent();
     }
 
     @Override
@@ -89,7 +92,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             // todo: resume previous connection
             return ConnectAcknowledge.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED, properties);
         }
-        if (store.size() + 1 <= settings.maximumSessionCount()) {
+        if (clientSessionStore.total() + 1 <= settings.maximumSessionCount()) {
             int sessionExpiryInterval = Math.min(
                     MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.SESSION_EXPIRY_INTERVAL, settings.defaultSessionExpiryInterval()),
                     settings.maxSessionExpiryInterval()
@@ -120,7 +123,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             // todo: Authentication Method
             // todo: Authentication Data
             ClientSession session = new DefaultClientSession(endpoint, sessionExpiryInterval, receiveMaximum);
-            store.put(endpoint.clientIdentifier(), session);
+            clientSessionStore.add(session);
             session.init();
             log.info("Client session [" + session.identifier() + "] registered. expiry time: " + session.expiryTime());
         }
@@ -130,13 +133,13 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     @Override
     public Optional<ClientSession> get(String clientId) {
-        return Optional.ofNullable(store.get(clientId));
+        return clientSessionStore.get(clientId);
     }
 
     @Override
     public void unregister(String clientId, boolean normalClosed) {
-        var previous = store.remove(clientId);
-        if (Objects.isNull(previous)) {
+        var previous = clientSessionStore.remove(clientId);
+        if (previous.isEmpty()) {
             return;
         }
         vertx.eventBus()
@@ -145,24 +148,14 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     @Override
     public void heartbeat(String clientId) {
-        ClientSession clientSession = store.get(clientId);
-        if (clientSession != null) {
-            clientSession.heartbeat();
-        }
+        clientSessionStore.get(clientId)
+                .ifPresent(ClientSession::heartbeat);
     }
 
     @Override
     public void cleanSession(String clientId) {
-        ClientSession previous = store.remove(clientId);
-        if (Objects.nonNull(previous)) {
-            System.out.println("disconnect:" + previous.identifier());
-            previous.close();
-        }
-    }
-
-    @Override
-    public int sessionCount() {
-        return store.size();
+        clientSessionStore.remove(clientId)
+                .ifPresent(ClientSession::close);
     }
 
     @Override
@@ -171,11 +164,11 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     }
 
     private void removeExpiredSessions() {
-        for (Map.Entry<String, ClientSession> entry : store.entrySet()) {
-            if (entry.getValue().isExpired()) {
-                store.remove(entry.getKey());
-                entry.getValue().close();
-            }
+        for (ClientSession session : clientSessionStore.expired()) {
+            clientSessionStore.remove(session.identifier());
+            session.close();
+            vertx.eventBus()
+                    .publish(ChannelKeys.CLIENT_SESSION_CLOSE, new ClientSessionClose(session.identifier(), true));
         }
     }
 }

@@ -1,15 +1,19 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.ChannelKeys;
+import cn.elvis.monaco.entity.SubscribeAcknowledge;
 import cn.elvis.monaco.entity.Subscription;
 import cn.elvis.monaco.entity.events.SubscriptionExtend;
 import cn.elvis.monaco.listener.SystemPublishListener;
 import cn.elvis.monaco.listener.WillPublishListener;
 import cn.elvis.monaco.manager.SubscriberManager;
+import cn.elvis.monaco.settings.Settings;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
+import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.MqttTopicSubscription;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 import io.vertx.mqtt.messages.codes.MqttUnsubAckReasonCode;
 
@@ -33,13 +37,16 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 
     private final Map<String, Map<Integer, Boolean>> messageAcknowledgeState = new ConcurrentHashMap<>();
 
+    private final Settings settings;
+
     private final EventBus eventBus;
 
     private final WillPublishListener willPublishListener;
 
     private final SystemPublishListener systemPublishListener;
 
-    public DefaultSubscriberManager(EventBus eventBus) {
+    public DefaultSubscriberManager(Settings settings, EventBus eventBus) {
+        this.settings = settings;
         this.eventBus = eventBus;
         this.willPublishListener = new WillPublishListener(eventBus, will -> {
             if (will.body().expired()) {
@@ -61,7 +68,11 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     }
 
     @Override
-    public MqttSubAckReasonCode subscribe(ClientSession clientSession, Subscription subscription) {
+    public SubscribeAcknowledge subscribe(MqttEndpoint endpoint, List<MqttTopicSubscription> subscriptions) {
+        for (MqttTopicSubscription topicSubscription : subscriptions) {
+
+        }
+
 //        List<Subscription> subscribers = store.getOrDefault(subscription.topic().filter(), new CopyOnWriteArrayList<>());
 //        subscribers.add(subscription);
 //        store.put(subscription.topicFilter(), subscribers);
