@@ -3,9 +3,6 @@ package cn.elvis.monaco.session;
 import cn.elvis.monaco.entity.PublishMessage;
 import cn.elvis.monaco.entity.Subscription;
 import cn.elvis.monaco.exception.Exceptions;
-import cn.elvis.monaco.settings.Settings;
-import io.netty.handler.codec.mqtt.MqttProperties;
-import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.vertx.core.Future;
 import io.vertx.core.internal.logging.Logger;
@@ -19,7 +16,6 @@ import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 /**
  * Default client session implementations, wrapped MqttEndpoint instance and maintained state.
@@ -54,8 +50,8 @@ public final class DefaultClientSession implements ClientSession {
     public void init() {
         Thread.ofVirtual().name("client-queue-worker-" + endpoint.clientIdentifier())
                 .uncaughtExceptionHandler((t, e) -> {
-                        log.error("[" + t.getName() + "] Unexpected exception", e);
-                        e.printStackTrace();
+                        log.error("[" + t.getName() + "] Unexpected exception:", e);
+                        e.printStackTrace(System.err);
                 })
                 .start(() -> {
                     while (!closed) {
@@ -117,20 +113,6 @@ public final class DefaultClientSession implements ClientSession {
     public void close() {
         closed = true;
         endpoint.close();
-    }
-
-    private int receiveMaximum(Settings settings) {
-        return intValue(MqttPropertyType.RECEIVE_MAXIMUM, settings::defaultReceiveMaximum);
-    }
-
-    @SuppressWarnings("unchecked")
-    private int intValue(MqttPropertyType propertyType, Supplier<Integer> defaultValueSupplier) {
-        return Optional.ofNullable(
-                (MqttProperties.MqttProperty<Integer>)
-                        endpoint.connectProperties().getProperty(propertyType.value())
-                )
-                .map(MqttProperties.MqttProperty::value)
-                .orElseGet(defaultValueSupplier);
     }
 
     @Override
