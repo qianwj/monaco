@@ -6,8 +6,12 @@ import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.session.*;
 import cn.elvis.monaco.settings.Settings;
 import cn.elvis.monaco.store.ClientSessionStore;
-import cn.elvis.monaco.store.MemoryClientSessionStore;
-import cn.elvis.monaco.store.MemoryTopicAliasStore;
+import cn.elvis.monaco.store.RetainMessageStore;
+import cn.elvis.monaco.store.SubscriptionStore;
+import cn.elvis.monaco.store.memory.MemoryClientSessionStore;
+import cn.elvis.monaco.store.memory.MemoryRetainMessageStore;
+import cn.elvis.monaco.store.memory.MemorySubscriptionStore;
+import cn.elvis.monaco.store.memory.MemoryTopicAliasStore;
 import cn.elvis.monaco.store.TopicAliasStore;
 import cn.elvis.monaco.transport.TCPTransport;
 import cn.elvis.monaco.transport.WebSocketTransport;
@@ -68,11 +72,13 @@ public final class MonacoServer {
     private void init() {
         final ClientSessionStore clientSessionStore = new MemoryClientSessionStore();
         final TopicAliasStore topicAliasStore = new MemoryTopicAliasStore();
+        final SubscriptionStore subscriptionStore = new MemorySubscriptionStore();
+        final RetainMessageStore retainMessageStore = new MemoryRetainMessageStore();
         final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx, topicAliasStore, clientSessionStore);
-        final PublisherManager publisherManager = new DefaultPublisherManager(settings, topicAliasStore, vertx);
-        final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus());
+        final PublisherManager publisherManager = new DefaultPublisherManager(settings, vertx, topicAliasStore, retainMessageStore);
+        final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus(), subscriptionStore);
         final WillManager willManager = new DefaultWillManager(vertx.eventBus());
-        final RetainMessageManager retainMessageManager = new DefaultRetainMessageManager(settings, vertx.eventBus());
+        final RetainMessageManager retainMessageManager = new DefaultRetainMessageManager(settings, vertx.eventBus(), retainMessageStore);
         managers.addAll(List.of(clientSessionManager, subscriberManager, willManager, retainMessageManager));
         final EndpointHandler handler = new EndpointHandler(
                 clientSessionManager,

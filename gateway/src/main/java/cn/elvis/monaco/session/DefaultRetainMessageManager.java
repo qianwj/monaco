@@ -5,6 +5,7 @@ import cn.elvis.monaco.entity.PublishMessage;
 import cn.elvis.monaco.listener.ClientSessionSubscribeListener;
 import cn.elvis.monaco.manager.RetainMessageManager;
 import cn.elvis.monaco.settings.Settings;
+import cn.elvis.monaco.store.RetainMessageStore;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
@@ -22,15 +23,18 @@ public final class DefaultRetainMessageManager implements RetainMessageManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultRetainMessageManager.class);
 
-    private final Map<String, PublishMessage> store = new ConcurrentHashMap<>();
+    private final RetainMessageStore store;
 
     private final boolean available;
 
     private ClientSessionSubscribeListener clientSessionSubscribeListener;
 
-    public DefaultRetainMessageManager(Settings settings, EventBus eventBus) {
+    public DefaultRetainMessageManager(Settings settings,
+                                       EventBus eventBus,
+                                       RetainMessageStore store) {
         this.available = settings.retainAvailable();
         if (available) {
+            this.store = store;
             this.clientSessionSubscribeListener = new ClientSessionSubscribeListener(eventBus, extend -> {
                 if (extend.noLocal()) {
                     log.info("No local retain message.");
@@ -50,14 +54,8 @@ public final class DefaultRetainMessageManager implements RetainMessageManager {
 //                            }
 //                        });
             });
-        }
-    }
-
-
-    @Override
-    public void addMessage(PublishMessage message) {
-        if (available) {
-            store.put(message.topic(), message);
+        } else {
+            this.store = null;
         }
     }
 

@@ -1,7 +1,12 @@
 package cn.elvis.monaco.manager;
 
+import cn.elvis.monaco.entity.SubscribeAcknowledge;
 import cn.elvis.monaco.entity.Subscription;
+import cn.elvis.monaco.entity.UnsubscribeAcknowledge;
 import cn.elvis.monaco.session.ClientSession;
+import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.messages.MqttSubscribeMessage;
+import io.vertx.mqtt.messages.MqttUnsubscribeMessage;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 import io.vertx.mqtt.messages.codes.MqttUnsubAckReasonCode;
 
@@ -15,11 +20,9 @@ import java.util.function.Consumer;
  */
 public interface SubscriberManager extends Manager {
 
-    MqttSubAckReasonCode subscribe(ClientSession clientSession, Subscription subscription);
+    SubscribeAcknowledge subscribe(MqttEndpoint endpoint, MqttSubscribeMessage packet);
 
-    MqttUnsubAckReasonCode unsubscribe(ClientSession clientSession, String topicFilter);
-
-    void search(String filter, Consumer<Subscription> consumer);
+    UnsubscribeAcknowledge unsubscribe(MqttEndpoint endpoint, MqttUnsubscribeMessage packet);
 
     boolean exists(String filter);
 }

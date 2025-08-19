@@ -38,8 +38,8 @@ public interface PublishMessage {
         return new PublishMessageImpl(mqttPublishMessage);
     }
 
-    static PublishMessage of(MqttPublishMessage source, String topic, boolean duplicate, boolean retain) {
-        return new PublishMessageImpl(source, topic, duplicate, retain);
+    static PublishMessage of(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain) {
+        return new PublishMessageImpl(source, topic, qos, duplicate, retain);
     }
 
     static PublishMessage of(int packetId, MqttWill will) {

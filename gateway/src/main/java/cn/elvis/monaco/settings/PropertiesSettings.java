@@ -106,6 +106,11 @@ public final class PropertiesSettings implements Settings {
     }
 
     @Override
+    public boolean sharedSubscriptionAvailable() {
+        return booleanValue(EnvironmentSettings.SHARD_SUBSCRIPTION_AVAILABLE_KEY, defaultSettings::sharedSubscriptionAvailable);
+    }
+
+    @Override
     public int publishQueueMaximum() {
         return intValue(EnvironmentSettings.PUBLISH_QUEUE_MAXIMUM_KEY, defaultSettings::publishQueueMaximum);
     }

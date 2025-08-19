@@ -34,6 +34,8 @@ public interface Settings {
 
     boolean subscriptionIdentifierAvailable();
 
+    boolean sharedSubscriptionAvailable();
+
     int publishQueueMaximum();
 
     boolean retainAvailable();

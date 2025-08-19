@@ -17,7 +17,7 @@ import java.util.Optional;
  */
 public final class SubscriptionImpl implements Subscription {
 
-    private final ClientSession clientSession;
+    private final String clientId;
 
     private final Topic topic;
 
@@ -29,12 +29,14 @@ public final class SubscriptionImpl implements Subscription {
 
     private final MqttSubscriptionOption.RetainedHandlingPolicy retainedHandlingPolicy;
 
-    SubscriptionImpl(ClientSession clientSession, MqttTopicSubscription subscription) {
-        Objects.requireNonNull(clientSession, "clientSession must not be null");
+    SubscriptionImpl(String clientId,
+                     MqttQoS qos,
+                     MqttTopicSubscription subscription) {
+        Objects.requireNonNull(clientId, "clientId must not be null");
         Objects.requireNonNull(subscription, "subscription must not be null");
-        this.clientSession = clientSession;
+        this.clientId = clientId;
         this.topic = Topics.createTopic(subscription.topicName());
-        this.qos = subscription.qualityOfService();
+        this.qos = qos;
         this.noLocal = subscription.subscriptionOption().isNoLocal();
         this.retainAsPublished = subscription.subscriptionOption().isRetainAsPublished();
         this.retainedHandlingPolicy = Optional.ofNullable(subscription.subscriptionOption())
@@ -53,24 +55,27 @@ public final class SubscriptionImpl implements Subscription {
     }
 
     @Override
-    public String sessionId() {
-        return clientSession.identifier();
+    public String clientId() {
+        return clientId;
     }
 
+    @Override
     public boolean noLocal() {
         return noLocal;
     }
 
+    @Override
     public MqttSubscriptionOption.RetainedHandlingPolicy retainedHandlingPolicy() {
         return retainedHandlingPolicy;
     }
 
+    @Override
     public boolean retainAsPublished() {
         return retainAsPublished;
     }
 
     @Override
-    public ClientSession subscriber() {
-        return clientSession;
+    public String topicFilter() {
+        return topic.unwrap();
     }
 }

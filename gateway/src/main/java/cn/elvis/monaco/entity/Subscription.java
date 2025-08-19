@@ -1,6 +1,5 @@
 package cn.elvis.monaco.entity;
 
-import cn.elvis.monaco.session.ClientSession;
 import cn.elvis.monaco.topics.Topic;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.handler.codec.mqtt.MqttSubscriptionOption;
@@ -18,7 +17,7 @@ public interface Subscription {
 
     MqttQoS qos();
 
-    String sessionId();
+    String clientId();
 
     boolean noLocal();
 
@@ -26,9 +25,9 @@ public interface Subscription {
 
     boolean retainAsPublished();
 
-    ClientSession subscriber();
+    String topicFilter();
 
-    static Subscription of(ClientSession clientSession, MqttTopicSubscription subscription) {
-        return new SubscriptionImpl(clientSession, subscription);
+    static Subscription of(String clientId, MqttQoS qos, MqttTopicSubscription subscription) {
+        return new SubscriptionImpl(clientId, qos, subscription);
     }
 }

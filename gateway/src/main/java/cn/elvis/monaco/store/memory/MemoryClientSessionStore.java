@@ -1,6 +1,7 @@
-package cn.elvis.monaco.store;
+package cn.elvis.monaco.store.memory;
 
 import cn.elvis.monaco.session.ClientSession;
+import cn.elvis.monaco.store.ClientSessionStore;
 
 import java.util.List;
 import java.util.Map;

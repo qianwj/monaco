@@ -1,4 +1,6 @@
-package cn.elvis.monaco.store;
+package cn.elvis.monaco.store.memory;
+
+import cn.elvis.monaco.store.TopicAliasStore;
 
 import java.util.Map;
 import java.util.Optional;

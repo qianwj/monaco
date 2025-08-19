@@ -2,9 +2,6 @@ package cn.elvis.monaco.settings;
 
 import cn.elvis.monaco.transport.TransportType;
 
-import java.util.Optional;
-import java.util.function.Supplier;
-
 /**
  * Application settings from environment variables.
  *
@@ -38,6 +35,8 @@ public final class EnvironmentSettings implements Settings {
     static final String WILDCARD_SUBSCRIPTION_AVAILABLE_KEY = KEY_PREFIX + "WILDCARD_SUBSCRIPTION_AVAILABLE";
 
     static final String SUBSCRIPTION_IDENTIFIER_AVAILABLE_KEY = KEY_PREFIX + "SUBSCRIPTION_IDENTIFIER_AVAILABLE";
+
+    static final String SHARD_SUBSCRIPTION_AVAILABLE_KEY = KEY_PREFIX + "SHARD_SUBSCRIPTION_AVAILABLE";
 
     static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
 
@@ -147,6 +146,11 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public boolean subscriptionIdentifierAvailable() {
         return Settings.booleanValue(SUBSCRIPTION_IDENTIFIER_AVAILABLE_KEY, System::getenv, defaultSettings::subscriptionIdentifierAvailable);
+    }
+
+    @Override
+    public boolean sharedSubscriptionAvailable() {
+        return Settings.booleanValue(SHARD_SUBSCRIPTION_AVAILABLE_KEY, System::getenv, defaultSettings::sharedSubscriptionAvailable);
     }
 
     @Override

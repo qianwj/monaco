@@ -92,6 +92,11 @@ public final class DefaultSettings implements Settings {
     }
 
     @Override
+    public boolean sharedSubscriptionAvailable() {
+        return false;
+    }
+
+    @Override
     public int publishQueueMaximum() {
         return PUBLISH_QUEUE_MAXIMUM;
     }

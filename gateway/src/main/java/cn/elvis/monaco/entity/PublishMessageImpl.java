@@ -27,10 +27,10 @@ public final class PublishMessageImpl implements PublishMessage {
         this.expiryTime = expiryTime(source.properties());
     }
 
-    PublishMessageImpl(MqttPublishMessage source, String topic, boolean duplicate, boolean retain) {
+    PublishMessageImpl(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain) {
         this.source = MqttPublishMessage.create(
                 source.messageId(),
-                source.qosLevel(),
+                qos,
                 duplicate,
                 retain,
                 topic,

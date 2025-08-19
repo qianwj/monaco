@@ -137,21 +137,13 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         endpoint.subscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive SUBSCRIBE packet: " + packet);
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            List<MqttSubAckReasonCode> reasonCodes = new ArrayList<>();
-            for (MqttTopicSubscription mqttTopicSubscription : packet.topicSubscriptions()) {
-                var subscription = Subscription.of(session, mqttTopicSubscription);
-                var reasonCode = subscriberManager.subscribe(session, subscription);
-                reasonCodes.add(reasonCode);
-            }
-            endpoint.subscribeAcknowledge(packet.messageId(), reasonCodes, packet.properties());
+            var ack = subscriberManager.subscribe(endpoint, packet);
+            ack.send(endpoint);
         }).unsubscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive UNSUB packet: " + packet);
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            var ackCodes = packet.topics()
-                    .stream()
-                    .map(topic -> subscriberManager.unsubscribe(session, topic))
-                    .toList();
-            endpoint.unsubscribeAcknowledge(packet.messageId(), ackCodes, packet.properties());
+            var ack = subscriberManager.unsubscribe(endpoint, packet);
+            ack.send(endpoint);
         });
     }
 
@@ -159,15 +151,8 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         endpoint.publishHandler(packet -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
-            publisherManager.publish(endpoint, packet, subscriberManager::exists).map(message -> {
-                if (message.retain()) {
-                    retainMessageManager.addMessage(message);
-                }
-                return message;
-            }).onFailure(ex -> {
-                publisherManager.reject(endpoint, ex, packet);
-                log.error("Failed to publish packet: ", ex);
-            });
+            var ack = publisherManager.publish(endpoint, packet);
+            ack.send(endpoint);
         }).publishReceivedHandler(messageId -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + messageId);

@@ -19,10 +19,7 @@ import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
 
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Default client session manager implementations, use Hash Map store client session.
@@ -116,8 +113,8 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                     .withProperty(MqttPropertyType.TOPIC_ALIAS_MAXIMUM, topicAliasMaximum)
                     .withAvailableOption(MqttPropertyType.WILDCARD_SUBSCRIPTION_AVAILABLE, settings.wildcardSubscriptionAvailable())
                     .withAvailableOption(MqttPropertyType.SUBSCRIPTION_IDENTIFIER_AVAILABLE, settings.subscriptionIdentifierAvailable())
+                    .withAvailableOption(MqttPropertyType.SHARED_SUBSCRIPTION_AVAILABLE, settings.sharedSubscriptionAvailable())
             ;
-            // todo: Shared Subscription Available
             // todo: Server Keep Alive
             // todo: Response Information
             // todo: Authentication Method

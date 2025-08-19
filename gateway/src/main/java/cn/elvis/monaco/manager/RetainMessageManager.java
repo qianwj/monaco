@@ -10,5 +10,4 @@ import cn.elvis.monaco.entity.PublishMessage;
  */
 public interface RetainMessageManager extends Manager {
 
-    void addMessage(PublishMessage message);
 }
