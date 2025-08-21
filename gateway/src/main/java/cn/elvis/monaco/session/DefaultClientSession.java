@@ -2,9 +2,7 @@ package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.entity.PublishMessage;
 import cn.elvis.monaco.entity.Subscription;
-import cn.elvis.monaco.exception.Exceptions;
-import io.netty.handler.codec.mqtt.MqttQoS;
-import io.vertx.core.Future;
+import cn.elvis.monaco.store.MessageStore;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
@@ -13,7 +11,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,20 +28,21 @@ public final class DefaultClientSession implements ClientSession {
 
     private final List<Subscription> subscriptions = new CopyOnWriteArrayList<>();
 
-    private final Queue<PublishMessage> processingQueue;
-
     private final Instant expiredTime;
 
     private final MqttEndpoint endpoint;
+
+    private final MessageStore messageStore;
 
     private volatile boolean closed;
 
     public DefaultClientSession(MqttEndpoint endpoint,
                                 int expiryInterval,
-                                int receiveMaximum) {
+                                int receiveMaximum,
+                                MessageStore messageStore) {
         this.endpoint = endpoint;
         this.expiredTime = Instant.now().plusMillis(expiryInterval);
-        this.processingQueue = new ArrayBlockingQueue<>(receiveMaximum);
+        this.messageStore = messageStore;
     }
 
     public void init() {
@@ -55,8 +53,7 @@ public final class DefaultClientSession implements ClientSession {
                 })
                 .start(() -> {
                     while (!closed) {
-                        PublishMessage message = processingQueue.poll();
-                        if (Objects.nonNull(message)) {
+                        messageStore.poll(identifier()).ifPresent(message -> {
                             endpoint.publish(
                                     message.topic(),
                                     message.payload(),
@@ -67,7 +64,7 @@ public final class DefaultClientSession implements ClientSession {
                                     message.properties()
                             );
                             heartbeat();
-                        }
+                        });
                     }
                 });
     }
@@ -93,15 +90,16 @@ public final class DefaultClientSession implements ClientSession {
     }
 
     @Override
-    public Future<Void> forward(PublishMessage message) {
-        if (message.qos() == MqttQoS.AT_MOST_ONCE) {
-            return endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain())
-                    .map(i -> null);
+    public void push(PublishMessage message) {
+        switch (message.qos()) {
+            case AT_MOST_ONCE:
+                endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain(), message.packetId(), message.properties());
+                break;
+            case AT_LEAST_ONCE, EXACTLY_ONCE:
+                messageStore.push(identifier(), message);
+                endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain(), message.packetId(), message.properties());
+                break;
         }
-        if (!processingQueue.offer(message)) {
-            return Future.failedFuture(Exceptions.receiveMaximumExceeded());
-        }
-        return Future.succeededFuture();
     }
 
     @Override

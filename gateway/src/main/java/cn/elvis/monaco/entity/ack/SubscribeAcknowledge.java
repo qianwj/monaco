@@ -1,4 +1,4 @@
-package cn.elvis.monaco.entity;
+package cn.elvis.monaco.entity.ack;
 
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import io.vertx.mqtt.MqttEndpoint;
@@ -10,8 +10,9 @@ public record SubscribeAcknowledge(
         int packetId,
         List<MqttSubAckReasonCode> reasonCodes,
         MqttPropertiesBuilder properties
-) {
+) implements Acknowledge {
 
+    @Override
     public void send(MqttEndpoint endpoint) {
         endpoint.subscribeAcknowledge(packetId, reasonCodes, properties.build());
     }

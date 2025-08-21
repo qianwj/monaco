@@ -1,11 +1,12 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.ChannelKeys;
-import cn.elvis.monaco.entity.PublishAcknowledge;
-import cn.elvis.monaco.entity.PublishExchangeAcknowledge;
-import cn.elvis.monaco.entity.PublishExchangeAcknowledge.ReasonCode;
+import cn.elvis.monaco.entity.ack.PublishAcknowledge;
+import cn.elvis.monaco.entity.ack.PublishExchangeAcknowledge;
+import cn.elvis.monaco.entity.ack.PublishExchangeAcknowledge.ReasonCode;
 import cn.elvis.monaco.entity.PublishMessage;
-import cn.elvis.monaco.entity.PublishReceived;
+import cn.elvis.monaco.entity.ack.PublishReceived;
+import cn.elvis.monaco.entity.ack.PublishRelease;
 import cn.elvis.monaco.listener.ClientSessionCloseListener;
 import cn.elvis.monaco.manager.PublisherManager;
 import cn.elvis.monaco.settings.Settings;
@@ -19,6 +20,7 @@ import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
 import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.messages.MqttPubRecMessage;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 
 /**
@@ -91,6 +93,16 @@ public final class DefaultPublisherManager implements PublisherManager {
         } else {
             return new PublishAcknowledge(packet.messageId(), ReasonCode.SUCCESS, properties);
         }
+    }
+
+    /**
+     * When client send a PUBREC to broker, broker should send a PUBREL to client.
+     * @param endpoint
+     * @param packet
+     */
+    public PublishRelease publishReceived(MqttEndpoint endpoint, MqttPubRecMessage packet) {
+
+        return new PublishRelease(packet.messageId(), ReasonCode.SUCCESS, MqttPropertiesBuilder.create());
     }
 
     @Override

@@ -5,6 +5,7 @@ import cn.elvis.monaco.topics.Topic;
 
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Subscription store
@@ -37,4 +38,7 @@ public interface SubscriptionStore {
      * @return removed subscriptions
      */
     List<Subscription> removeSubscriptions(String clientId, Set<String> topicFilters);
+
+
+    void search(Topic topic, Consumer<Subscription> consumer);
 }

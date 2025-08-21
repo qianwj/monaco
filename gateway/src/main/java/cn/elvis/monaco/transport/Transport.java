@@ -37,7 +37,6 @@ abstract class Transport extends AbstractVerticle {
         TransportSettings config = switch (transportType) {
             case TransportType.TCP -> settings.tcp();
             case TransportType.WS -> settings.webSocket();
-            default -> throw new IllegalArgumentException("Unsupported transportType: " + transportType);
         };
         if (config.enable()) {
             this.server = MqttServer.create(vertx, config.options());

@@ -6,6 +6,7 @@ import cn.elvis.monaco.topics.Topic;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * Subscription store use memory
@@ -61,5 +62,15 @@ public final class MemorySubscriptionStore implements SubscriptionStore {
             }
         }
         return removedSubscriptions;
+    }
+
+    public void search(Topic topic, Consumer<Subscription> consumer) {
+        for (List<Subscription> clientSubscriptions : clientSubscriptionsStore.values()) {
+            for (Subscription clientSubscription : clientSubscriptions) {
+                if (clientSubscription.topic().equals(topic)) {
+                    consumer.accept(clientSubscription);
+                }
+            }
+        }
     }
 }

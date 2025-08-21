@@ -1,8 +1,7 @@
 package cn.elvis.monaco.manager;
 
-import cn.elvis.monaco.entity.ConnectAcknowledge;
+import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
 import cn.elvis.monaco.session.ClientSession;
-import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
 import io.vertx.mqtt.MqttEndpoint;
 
 import java.util.Optional;

@@ -1,4 +1,4 @@
-package cn.elvis.monaco.entity;
+package cn.elvis.monaco.entity.ack;
 
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import io.vertx.mqtt.MqttEndpoint;

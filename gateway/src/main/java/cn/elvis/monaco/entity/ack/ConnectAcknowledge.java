@@ -1,4 +1,4 @@
-package cn.elvis.monaco.entity;
+package cn.elvis.monaco.entity.ack;
 
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
@@ -8,7 +8,7 @@ public record ConnectAcknowledge(
         MqttConnectReturnCode returnCode,
         boolean sessionPresent,
         MqttPropertiesBuilder properties
-) {
+) implements Acknowledge {
 
     public static ConnectAcknowledge reject(MqttConnectReturnCode returnCode, MqttPropertiesBuilder properties) {
         return new ConnectAcknowledge(returnCode, false, properties);
@@ -18,6 +18,7 @@ public record ConnectAcknowledge(
         return new ConnectAcknowledge(MqttConnectReturnCode.CONNECTION_ACCEPTED, sessionPresent, properties);
     }
 
+    @Override
     public void send(MqttEndpoint endpoint) {
         if (MqttConnectReturnCode.CONNECTION_ACCEPTED == returnCode) {
             endpoint.accept(sessionPresent, properties.build());

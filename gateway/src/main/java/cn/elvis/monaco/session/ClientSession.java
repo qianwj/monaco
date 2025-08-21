@@ -32,7 +32,7 @@ public interface ClientSession extends Subscriber {
 
     ZonedDateTime expiryTime();
 
-    Future<Void> forward(PublishMessage message);
+    void push(PublishMessage message);
 
     void heartbeat();
 

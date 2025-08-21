@@ -1,12 +1,13 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.ChannelKeys;
-import cn.elvis.monaco.entity.ConnectAcknowledge;
+import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
 import cn.elvis.monaco.entity.events.ClientSessionClose;
 import cn.elvis.monaco.manager.ClientSessionManager;
 import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.settings.Settings;
 import cn.elvis.monaco.store.ClientSessionStore;
+import cn.elvis.monaco.store.MessageStore;
 import cn.elvis.monaco.store.TopicAliasStore;
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
@@ -40,17 +41,21 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     private final ClientSessionStore clientSessionStore;
 
+    private final MessageStore messageStore;
+
     private final long timerId;
 
     public DefaultClientSessionManager(Settings settings,
                                        Vertx vertx,
                                        TopicAliasStore topicAliasStore,
-                                       ClientSessionStore clientSessionStore) {
+                                       ClientSessionStore clientSessionStore,
+                                       MessageStore messageStore) {
         this.settings = settings;
         this.vertx = vertx;
         this.topicAliasStore = topicAliasStore;
         this.clientSessionStore = clientSessionStore;
         this.timerId = vertx.setTimer(1000, id -> removeExpiredSessions());
+        this.messageStore = messageStore;
     }
 
     @Override
@@ -119,7 +124,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             // todo: Response Information
             // todo: Authentication Method
             // todo: Authentication Data
-            ClientSession session = new DefaultClientSession(endpoint, sessionExpiryInterval, receiveMaximum);
+            ClientSession session = new DefaultClientSession(endpoint, sessionExpiryInterval, receiveMaximum, messageStore);
             clientSessionStore.add(session);
             session.init();
             log.info("Client session [" + session.identifier() + "] registered. expiry time: " + session.expiryTime());

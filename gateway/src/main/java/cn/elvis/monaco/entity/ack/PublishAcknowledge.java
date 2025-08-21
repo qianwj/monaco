@@ -1,4 +1,4 @@
-package cn.elvis.monaco.entity;
+package cn.elvis.monaco.entity.ack;
 
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import io.vertx.mqtt.MqttEndpoint;
@@ -9,6 +9,7 @@ public record PublishAcknowledge(
         ReasonCode reasonCode,
         MqttPropertiesBuilder properties) implements PublishExchangeAcknowledge {
 
+    @Override
     public void send(MqttEndpoint endpoint) {
         endpoint.publishAcknowledge(packetId, MqttPubAckReasonCode.valueOf(reasonCode.value()), properties.build());
     }

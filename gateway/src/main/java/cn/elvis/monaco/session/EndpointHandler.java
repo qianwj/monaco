@@ -1,29 +1,21 @@
 package cn.elvis.monaco.session;
 
-import cn.elvis.monaco.entity.ConnectAcknowledge;
-import cn.elvis.monaco.entity.Subscription;
+import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
+import cn.elvis.monaco.entity.ack.SubscribeAcknowledge;
 import cn.elvis.monaco.entity.WillMessage;
 import cn.elvis.monaco.manager.*;
 import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.settings.Settings;
+import cn.elvis.monaco.utils.Lists;
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
-import cn.elvis.monaco.utils.MqttPropertiesUtils;
-import cn.elvis.monaco.utils.ULID;
-import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
-import io.netty.handler.codec.mqtt.MqttProperties;
-import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
-import io.netty.util.internal.StringUtil;
 import io.vertx.core.Handler;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.core.json.Json;
 import io.vertx.mqtt.MqttEndpoint;
-import io.vertx.mqtt.MqttTopicSubscription;
 import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
 import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,6 +53,8 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     private final ClientSessionManager clientSessionManager;
 
+    private final PacketIdentifierManager packetIdentifierManager;
+
     private final PublisherManager publisherManager;
 
     private final SubscriberManager subscriberManager;
@@ -71,13 +65,14 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     private final Settings settings;
 
-    public EndpointHandler(ClientSessionManager clientSessionManager,
+    public EndpointHandler(ClientSessionManager clientSessionManager, PacketIdentifierManager packetIdentifierManager,
                            PublisherManager publisherManager,
                            SubscriberManager subscriberManager,
                            WillManager willManager,
                            RetainMessageManager retainMessageManager,
                            Settings settings) {
         this.clientSessionManager = clientSessionManager;
+        this.packetIdentifierManager = packetIdentifierManager;
         this.publisherManager = publisherManager;
         this.subscriberManager = subscriberManager;
         this.willManager = willManager;
@@ -92,7 +87,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             return;
         }
         disconnect(endpoint);
-        subscribe(endpoint, session.get());
+        subscribe(endpoint);
         publish(endpoint);
 
         endpoint.pingHandler(v -> {
@@ -133,17 +128,21 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         });
     }
 
-    private void subscribe(MqttEndpoint endpoint, ClientSession session) {
+    private void subscribe(MqttEndpoint endpoint) {
         endpoint.subscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive SUBSCRIBE packet: " + packet);
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            var ack = subscriberManager.subscribe(endpoint, packet);
+            var ack = packetIdentifierManager.setUsingPacketId(endpoint.clientIdentifier(), packet)
+                    .orElse(subscriberManager.subscribe(endpoint, packet));
             ack.send(endpoint);
+            packetIdentifierManager.unsetUsingPacketId(endpoint.clientIdentifier(), packet.messageId());
         }).unsubscribeHandler(packet -> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive UNSUB packet: " + packet);
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            var ack = subscriberManager.unsubscribe(endpoint, packet);
+            var ack = packetIdentifierManager.setUsingPacketId(endpoint.clientIdentifier(), packet)
+                    .orElse(subscriberManager.unsubscribe(endpoint, packet));
             ack.send(endpoint);
+            packetIdentifierManager.unsetUsingPacketId(endpoint.clientIdentifier(), packet.messageId());
         });
     }
 
@@ -151,7 +150,8 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         endpoint.publishHandler(packet -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBLISH packet: " + Json.encode(packet));
-            var ack = publisherManager.publish(endpoint, packet);
+            var ack = packetIdentifierManager.setUsingPacketId(endpoint.clientIdentifier(), packet)
+                    .orElse(publisherManager.publish(endpoint, packet));
             ack.send(endpoint);
         }).publishReceivedHandler(messageId -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());

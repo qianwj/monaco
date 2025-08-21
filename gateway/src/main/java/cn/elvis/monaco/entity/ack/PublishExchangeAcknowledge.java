@@ -1,18 +1,16 @@
-package cn.elvis.monaco.entity;
+package cn.elvis.monaco.entity.ack;
 
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
-import io.vertx.mqtt.MqttEndpoint;
 
 public sealed interface PublishExchangeAcknowledge
-        permits PublishAcknowledge, PublishReceived {
+        extends Acknowledge
+        permits PublishAcknowledge, PublishReceived, PublishRelease {
 
     int packetId();
 
     ReasonCode reasonCode();
 
     MqttPropertiesBuilder properties();
-
-    void send(MqttEndpoint endpoint);
 
     enum ReasonCode {
         SUCCESS((byte)0x0),
