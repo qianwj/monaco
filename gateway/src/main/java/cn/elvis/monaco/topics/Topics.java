@@ -15,7 +15,7 @@ public final class Topics {
 
     public static final String SINGLE_WILDCARD_TOKEN = "+";
 
-    public static final String MULTI_WILDCARD_TOKEN = "*";
+    public static final String MULTI_WILDCARD_TOKEN = "#";
 
     public static final String SHARE_PREFIX = "$share";
 
@@ -128,11 +128,7 @@ public final class Topics {
         }
 
         // 检查是否包含非法通配符组合
-        if (containsWildcard(level)) {
-            return false;
-        }
-
-        return true;
+        return !containsWildcard(level);
     }
 
     /**
