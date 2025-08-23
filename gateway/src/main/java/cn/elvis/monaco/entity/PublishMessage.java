@@ -16,6 +16,8 @@ public interface PublishMessage {
 
     int packetId();
 
+    String senderId();
+
     MqttQoS qos();
 
     String topic();

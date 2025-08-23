@@ -5,12 +5,9 @@ import cn.elvis.monaco.entity.ack.SubscribeAcknowledge;
 import cn.elvis.monaco.entity.Subscription;
 import cn.elvis.monaco.entity.ack.UnsubscribeAcknowledge;
 import cn.elvis.monaco.entity.events.SubscriptionExtend;
-import cn.elvis.monaco.listener.SystemPublishListener;
 import cn.elvis.monaco.manager.SubscriberManager;
 import cn.elvis.monaco.settings.Settings;
-import cn.elvis.monaco.store.ClientSessionStore;
 import cn.elvis.monaco.store.SubscriptionStore;
-import cn.elvis.monaco.topics.Topic;
 import cn.elvis.monaco.topics.Topics;
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
@@ -27,7 +24,6 @@ import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 import io.vertx.mqtt.messages.codes.MqttUnsubAckReasonCode;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Managing subscribers
@@ -38,30 +34,20 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultSubscriberManager.class);
 
-    private final Map<String, List<Subscription>> store = new ConcurrentHashMap<>();
-
-    private final Map<String, Map<Integer, Boolean>> messageAcknowledgeState = new ConcurrentHashMap<>();
-
     private final Settings settings;
 
     private final EventBus eventBus;
 
     private final SubscriptionStore subscriptionStore;
 
-    private final ClientSessionStore clientSessionStore;
-
 //    private final WillPublishListener willPublishListener;
-
-    private final SystemPublishListener systemPublishListener;
 
     public DefaultSubscriberManager(Settings settings,
                                     EventBus eventBus,
-                                    SubscriptionStore subscriptionStore,
-                                    ClientSessionStore clientSessionStore) {
+                                    SubscriptionStore subscriptionStore) {
         this.settings = settings;
         this.eventBus = eventBus;
         this.subscriptionStore = subscriptionStore;
-        this.clientSessionStore = clientSessionStore;
 //        this.willPublishListener = new WillPublishListener(eventBus, will -> {
 //            if (will.body().expired()) {
 //                log.info("skip publish will message cause expired.");
@@ -70,12 +56,6 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 //            var msg = will.body();
 //            search(msg.topic(), subscription -> subscription.subscriber().forward(msg));
 //        });
-        this.systemPublishListener = new SystemPublishListener(eventBus, message -> {
-            subscriptionStore.search(Topics.createTopic(message.topic()), subscription -> {
-                var clientId = subscription.clientId();
-                clientSessionStore.get(clientId).ifPresent(session -> session.push(message));
-            });
-        });
     }
 
     @Override
@@ -151,13 +131,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     }
 
     @Override
-    public boolean exists(String filter) {
-        return store.containsKey(filter);
-    }
-
-    @Override
     public void close() {
 //        willPublishListener.close();
-//        systemPublishListener.close();
     }
 }

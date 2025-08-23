@@ -153,35 +153,27 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             var ack = packetIdentifierManager.setUsingPacketId(endpoint.clientIdentifier(), packet)
                     .orElse(publisherManager.publish(endpoint, packet));
             ack.send(endpoint);
-        }).publishReceivedHandler(messageId -> {
+        }).publishAcknowledgeHandler(packetId -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + messageId);
-            var receivedState = messageStateStore.getOrDefault(messageId, new ConcurrentHashMap<>());
-            var received = receivedState.getOrDefault(endpoint.clientIdentifier(), false);
-            if (received) {
-                endpoint.publishRelease(messageId);
-                return;
-            }
-            receivedState.put(endpoint.clientIdentifier(), true);
-            endpoint.publishRelease(messageId);
-            messageStateStore.put(messageId, receivedState);
-        }).publishReleaseHandler(messageId -> {
+            log.info("client[" + endpoint.clientIdentifier() + "] receive PUBACK packet: " + packetId);
+            packetIdentifierManager.unsetUsingPacketId(endpoint.clientIdentifier(), packetId);
+            clientSessionManager.get(endpoint.clientIdentifier())
+                    .ifPresent(session -> session.ack(packetId));
+        }).publishReceivedHandler(packetId -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
-            log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREL packet: " + messageId);
-            var messageState = messageStateStore.get(messageId);
-            if (messageState == null || messageState.isEmpty()) {
-                endpoint.publishComplete(messageId);
-            }
+            log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREC packet: " + packetId);
+            publisherManager.publishReceived(endpoint, packetId)
+                    .send(endpoint);
+        }).publishReleaseHandler(packetId -> {
+            clientSessionManager.heartbeat(endpoint.clientIdentifier());
+            log.info("client[" + endpoint.clientIdentifier() + "] receive PUBREL packet: " + packetId);
+            publisherManager.releasePublish(packetId).send(endpoint);
         }).publishCompletionHandler(messageId -> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
-            var receiveState = messageStateStore.get(messageId);
-            if (receiveState == null || receiveState.isEmpty()) {
-                messageStateStore.remove(messageId);
-                endpoint.publishComplete(messageId);
-                return;
-            }
-            receiveState.remove(endpoint.clientIdentifier());
+            // todo: remove receivers message
+
+            // todo: remove unacked message from client
         });
     }
 }

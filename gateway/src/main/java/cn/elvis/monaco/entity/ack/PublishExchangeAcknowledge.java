@@ -4,7 +4,7 @@ import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 
 public sealed interface PublishExchangeAcknowledge
         extends Acknowledge
-        permits PublishAcknowledge, PublishReceived, PublishRelease {
+        permits PublishAcknowledge, PublishComplete, PublishReceived, PublishRelease {
 
     int packetId();
 

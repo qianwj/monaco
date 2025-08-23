@@ -9,10 +9,7 @@ import cn.elvis.monaco.store.*;
 import cn.elvis.monaco.store.memory.*;
 import cn.elvis.monaco.transport.TCPTransport;
 import cn.elvis.monaco.transport.WebSocketTransport;
-import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Vertx;
-import io.vertx.core.VertxBuilder;
-import io.vertx.core.VertxOptions;
+import io.vertx.core.*;
 import io.vertx.micrometer.MicrometerMetricsFactory;
 
 import java.util.ArrayList;
@@ -71,8 +68,8 @@ public final class MonacoServer {
         final MessageStore messageStore = new MemoryMessageStore();
         final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx, topicAliasStore, clientSessionStore, messageStore);
         final PacketIdentifierManager packetIdentifierManager = new DefaultPacketIdentifierManager();
-        final PublisherManager publisherManager = new DefaultPublisherManager(settings, vertx, topicAliasStore, retainMessageStore);
-        final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus(), subscriptionStore, clientSessionStore);
+        final PublisherManager publisherManager = new DefaultPublisherManager(settings, vertx, clientSessionStore, topicAliasStore, retainMessageStore);
+        final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus(), subscriptionStore);
         final WillManager willManager = new DefaultWillManager(vertx.eventBus());
         final RetainMessageManager retainMessageManager = new DefaultRetainMessageManager(settings, vertx.eventBus(), retainMessageStore);
         managers.addAll(List.of(clientSessionManager, subscriberManager, willManager, retainMessageManager));
@@ -85,16 +82,24 @@ public final class MonacoServer {
                 retainMessageManager,
                 settings
         );
+        vertx.deployVerticle(
+                () -> new PushService(subscriptionStore, clientSessionStore),
+                new DeploymentOptions()
+                        .setInstances(1)
+                        .setThreadingModel(ThreadingModel.WORKER)
+        );
         if (settings.tcp().enable()) {
             vertx.deployVerticle(
                     () -> new TCPTransport(settings, handler),
-                    new DeploymentOptions().setInstances(settings.tcp().instances())
+                    new DeploymentOptions()
+                            .setInstances(settings.tcp().instances())
             );
         }
         if (settings.webSocket().enable()) {
             vertx.deployVerticle(
                     () -> new WebSocketTransport(settings, handler),
-                    new DeploymentOptions().setInstances(settings.webSocket().instances())
+                    new DeploymentOptions()
+                            .setInstances(settings.webSocket().instances())
             );
         }
     }

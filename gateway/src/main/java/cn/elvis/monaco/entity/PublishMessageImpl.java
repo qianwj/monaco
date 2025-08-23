@@ -20,14 +20,17 @@ public final class PublishMessageImpl implements PublishMessage {
 
     private final MqttPublishMessage source;
 
+    private final String senderId;
+
     private final Instant expiryTime;
 
-    PublishMessageImpl(MqttPublishMessage source) {
+    PublishMessageImpl(MqttPublishMessage source, String senderId) {
         this.source = source;
         this.expiryTime = expiryTime(source.properties());
+        this.senderId = senderId;
     }
 
-    PublishMessageImpl(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain) {
+    PublishMessageImpl(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain, String senderId) {
         this.source = MqttPublishMessage.create(
                 source.messageId(),
                 qos,
@@ -38,9 +41,10 @@ public final class PublishMessageImpl implements PublishMessage {
                 source.properties()
         );
         this.expiryTime = expiryTime(source.properties());
+        this.senderId = senderId;
     }
 
-    PublishMessageImpl(PublishMessage source, String topic, boolean duplicate, boolean retain) {
+    PublishMessageImpl(PublishMessage source, String topic, boolean duplicate, boolean retain, String senderId) {
         this.source = MqttPublishMessage.create(
                 source.packetId(),
                 source.qos(),
@@ -51,6 +55,7 @@ public final class PublishMessageImpl implements PublishMessage {
                 source.properties()
         );
         this.expiryTime = expiryTime(source.properties());
+        this.senderId = senderId;
     }
 
     PublishMessageImpl(int packetId, MqttWill will) {

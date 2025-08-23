@@ -1,6 +1,7 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.entity.PublishMessage;
+import cn.elvis.monaco.exception.ProtocolException;
 import io.vertx.core.Future;
 
 import java.time.ZonedDateTime;
@@ -32,7 +33,11 @@ public interface ClientSession extends Subscriber {
 
     ZonedDateTime expiryTime();
 
-    void push(PublishMessage message);
+    void push(PublishMessage message) throws ProtocolException;
+
+    void releasePush(int packetId);
+
+    void ack(int packedId);
 
     void heartbeat();
 

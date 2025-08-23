@@ -18,5 +18,4 @@ public interface SubscriberManager extends Manager {
 
     UnsubscribeAcknowledge unsubscribe(MqttEndpoint endpoint, MqttUnsubscribeMessage packet);
 
-    boolean exists(String filter);
 }

@@ -10,6 +10,8 @@ public sealed interface ChannelKeys permits ChannelKeys.NotImplemented {
 
     String MESSAGE_PUBLISH_CHANNEL = "system:publish";
 
+    String PUBLISH_RELEASE_CHANNEL = "system:publish:release";
+
     final class NotImplemented implements ChannelKeys {
         private NotImplemented() {}
     }

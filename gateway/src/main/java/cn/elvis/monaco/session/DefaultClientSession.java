@@ -2,10 +2,14 @@ package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.entity.PublishMessage;
 import cn.elvis.monaco.entity.Subscription;
+import cn.elvis.monaco.exception.Exceptions;
+import cn.elvis.monaco.exception.ProtocolException;
 import cn.elvis.monaco.store.MessageStore;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.messages.codes.MqttPubRelReasonCode;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -34,6 +38,10 @@ public final class DefaultClientSession implements ClientSession {
 
     private final MessageStore messageStore;
 
+    private final Set<Integer> bucket;
+
+    private final int receiveMaximum;
+
     private volatile boolean closed;
 
     public DefaultClientSession(MqttEndpoint endpoint,
@@ -43,6 +51,8 @@ public final class DefaultClientSession implements ClientSession {
         this.endpoint = endpoint;
         this.expiredTime = Instant.now().plusMillis(expiryInterval);
         this.messageStore = messageStore;
+        this.bucket = new HashSet<>();
+        this.receiveMaximum = receiveMaximum;
     }
 
     public void init() {
@@ -90,16 +100,31 @@ public final class DefaultClientSession implements ClientSession {
     }
 
     @Override
-    public void push(PublishMessage message) {
+    public synchronized void push(PublishMessage message) throws ProtocolException {
         switch (message.qos()) {
             case AT_MOST_ONCE:
                 endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain(), message.packetId(), message.properties());
                 break;
             case AT_LEAST_ONCE, EXACTLY_ONCE:
-                messageStore.push(identifier(), message);
-                endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain(), message.packetId(), message.properties());
+                if (bucket.size() < receiveMaximum) {
+                    bucket.add(message.packetId());
+                    messageStore.push(identifier(), message);
+                    endpoint.publish(message.topic(), message.payload(), message.qos(), message.duplicate(), message.retain(), message.packetId(), message.properties());
+                } else {
+                    throw Exceptions.receiveMaximumExceeded();
+                }
                 break;
         }
+    }
+
+    @Override
+    public void releasePush(int packetId) {
+        endpoint.publishRelease(packetId, MqttPubRelReasonCode.SUCCESS, new MqttProperties());
+    }
+
+    @Override
+    public void ack(int packedId) {
+        bucket.remove(packedId);
     }
 
     @Override

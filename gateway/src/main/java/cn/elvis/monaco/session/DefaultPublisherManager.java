@@ -1,15 +1,13 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.ChannelKeys;
-import cn.elvis.monaco.entity.ack.PublishAcknowledge;
-import cn.elvis.monaco.entity.ack.PublishExchangeAcknowledge;
+import cn.elvis.monaco.entity.ack.*;
 import cn.elvis.monaco.entity.ack.PublishExchangeAcknowledge.ReasonCode;
 import cn.elvis.monaco.entity.PublishMessage;
-import cn.elvis.monaco.entity.ack.PublishReceived;
-import cn.elvis.monaco.entity.ack.PublishRelease;
 import cn.elvis.monaco.listener.ClientSessionCloseListener;
 import cn.elvis.monaco.manager.PublisherManager;
 import cn.elvis.monaco.settings.Settings;
+import cn.elvis.monaco.store.ClientSessionStore;
 import cn.elvis.monaco.store.RetainMessageStore;
 import cn.elvis.monaco.store.TopicAliasStore;
 import cn.elvis.monaco.topics.Topics;
@@ -19,6 +17,7 @@ import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.messages.MqttPubRecMessage;
 import io.vertx.mqtt.messages.MqttPublishMessage;
@@ -33,6 +32,8 @@ public final class DefaultPublisherManager implements PublisherManager {
 
     private final Settings settings;
 
+    private final ClientSessionStore clientSessionStore;
+
     private final TopicAliasStore topicAliasStore;
 
     private final RetainMessageStore retainMessageStore;
@@ -43,9 +44,11 @@ public final class DefaultPublisherManager implements PublisherManager {
 
     public DefaultPublisherManager(Settings settings,
                                    Vertx vertx,
+                                   ClientSessionStore clientSessionStore,
                                    TopicAliasStore topicAliasStore,
                                    RetainMessageStore retainMessageStore) {
         this.settings = settings;
+        this.clientSessionStore = clientSessionStore;
         this.vertx = vertx;
         this.topicAliasStore = topicAliasStore;
         this.retainMessageStore = retainMessageStore;
@@ -98,11 +101,33 @@ public final class DefaultPublisherManager implements PublisherManager {
     /**
      * When client send a PUBREC to broker, broker should send a PUBREL to client.
      * @param endpoint
-     * @param packet
+     * @param packetId
      */
-    public PublishRelease publishReceived(MqttEndpoint endpoint, MqttPubRecMessage packet) {
+    @Override
+    public PublishRelease publishReceived(MqttEndpoint endpoint, int packetId) {
+        clientSessionStore.get(endpoint.clientIdentifier())
+                .ifPresent(session -> session.ack(packetId));
+        return new PublishRelease(packetId, ReasonCode.SUCCESS, MqttPropertiesBuilder.create());
+    }
 
-        return new PublishRelease(packet.messageId(), ReasonCode.SUCCESS, MqttPropertiesBuilder.create());
+    /**
+     * When receive REBREL packet from publisher, broker should forward this message to subscribers.
+     * @param packetId
+     */
+    @Override
+    public PublishComplete releasePublish(int packetId) {
+        JsonObject release = new JsonObject();
+        release.put("packetId", packetId);
+        release.put("type", "release");
+        vertx.eventBus().publish(ChannelKeys.PUBLISH_RELEASE_CHANNEL, release);
+        return new PublishComplete(packetId, ReasonCode.SUCCESS, MqttPropertiesBuilder.create());
+    }
+
+    public void cleanPublish(int packetId) {
+        JsonObject complete = new JsonObject();
+        complete.put("packetId", packetId);
+        complete.put("type", "complete");
+        vertx.eventBus().publish(ChannelKeys.PUBLISH_RELEASE_CHANNEL, complete);
     }
 
     @Override
