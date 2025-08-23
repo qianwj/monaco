@@ -1,5 +1,6 @@
 package cn.elvis.monaco.settings;
 
+import cn.elvis.monaco.authentication.AuthenticationMode;
 import cn.elvis.monaco.transport.TransportType;
 
 /**
@@ -38,7 +39,9 @@ public final class EnvironmentSettings implements Settings {
 
     static final String SHARD_SUBSCRIPTION_AVAILABLE_KEY = KEY_PREFIX + "SHARD_SUBSCRIPTION_AVAILABLE";
 
-    static final String PUBLISH_QUEUE_MAXIMUM_KEY = KEY_PREFIX + "PUBLISH_QUEUE_MAXIMUM";
+    static final String AUTHENTICATION_MODE_KEY = KEY_PREFIX + "AUTHENTICATION_MODE";
+
+    static final String FILE_AUTHENTICATION_PATH_KEY = KEY_PREFIX + "FILE_AUTHENTICATION_PATH";
 
     static final String TCP_TRANSPORT_KEY_PREFIX = KEY_PREFIX + "TCP_TRANSPORT_";
 
@@ -59,6 +62,8 @@ public final class EnvironmentSettings implements Settings {
     static final String METRICS_PORT_KEY = KEY_PREFIX + "METRICS_PORT";
 
     static final String METRICS_ENDPOINT_KEY = KEY_PREFIX + "METRICS_ENDPOINT";
+
+    private final AuthenticationMode authenticationMode;
 
     private final Settings defaultSettings = DefaultSettings.getInstance();
 
@@ -82,6 +87,9 @@ public final class EnvironmentSettings implements Settings {
                 WS_TRANSPORT_KEY_PREFIX
         );
         this.metricsConfig = getMetricsSettings();
+        this.authenticationMode = AuthenticationMode.valueOf(
+                Settings.value(AUTHENTICATION_MODE_KEY, System::getenv, defaultSettings.authenticationMode()::name)
+        );
     }
 
     public static Settings getInstance() {
@@ -124,11 +132,6 @@ public final class EnvironmentSettings implements Settings {
     }
 
     @Override
-    public boolean retainAvailable() {
-        return Settings.booleanValue(RETAIN_AVAILABLE_KEY, System::getenv, defaultSettings::retainAvailable);
-    }
-
-    @Override
     public int topicAliasMaximum() {
         return Settings.intValue(TOPIC_ALIAS_MAXIMUM_KEY, System::getenv, defaultSettings::topicAliasMaximum);
     }
@@ -154,8 +157,18 @@ public final class EnvironmentSettings implements Settings {
     }
 
     @Override
-    public int publishQueueMaximum() {
-        return Settings.intValue(PUBLISH_QUEUE_MAXIMUM_KEY, System::getenv, defaultSettings::publishQueueMaximum);
+    public boolean retainAvailable() {
+        return Settings.booleanValue(RETAIN_AVAILABLE_KEY, System::getenv, defaultSettings::retainAvailable);
+    }
+
+    @Override
+    public AuthenticationMode authenticationMode() {
+        return authenticationMode;
+    }
+
+    @Override
+    public String fileAuthenticationPath() {
+        return Settings.value(FILE_AUTHENTICATION_PATH_KEY, System::getenv, defaultSettings::fileAuthenticationPath);
     }
 
     @Override

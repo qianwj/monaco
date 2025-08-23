@@ -1,10 +1,14 @@
-package cn.elvis.monaco.session;
+package cn.elvis.monaco.manager.standalone;
 
 import cn.elvis.monaco.ChannelKeys;
+import cn.elvis.monaco.authentication.Authentications;
+import cn.elvis.monaco.authentication.Authenticator;
 import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
 import cn.elvis.monaco.entity.events.ClientSessionClose;
 import cn.elvis.monaco.manager.ClientSessionManager;
 import cn.elvis.monaco.metrics.Metrics;
+import cn.elvis.monaco.session.ClientSession;
+import cn.elvis.monaco.session.DefaultClientSession;
 import cn.elvis.monaco.settings.Settings;
 import cn.elvis.monaco.store.ClientSessionStore;
 import cn.elvis.monaco.store.MessageStore;
@@ -18,6 +22,7 @@ import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
+import io.vertx.mqtt.MqttAuth;
 import io.vertx.mqtt.MqttEndpoint;
 
 import java.util.Optional;
@@ -37,6 +42,8 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
 
     private final Vertx vertx;
 
+    private final Authenticator authenticator;
+
     private final TopicAliasStore topicAliasStore;
 
     private final ClientSessionStore clientSessionStore;
@@ -52,6 +59,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                                        MessageStore messageStore) {
         this.settings = settings;
         this.vertx = vertx;
+        this.authenticator = Authentications.create(settings, vertx);
         this.topicAliasStore = topicAliasStore;
         this.clientSessionStore = clientSessionStore;
         this.timerId = vertx.setTimer(1000, id -> removeExpiredSessions());
@@ -79,10 +87,16 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             }
         }
         if (endpoint.clientIdentifier().length() > settings.maximumClientIdentifierLength()) {
-            endpoint.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED);
             return ConnectAcknowledge.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED, properties);
         }
         log.info("New client incoming: " + endpoint.clientIdentifier() + ", clean start: " + endpoint.isCleanSession());
+        var username = Optional.ofNullable(endpoint.auth()).map(MqttAuth::getUsername).orElse("");
+        var password = Optional.ofNullable(endpoint.auth()).map(MqttAuth::getPassword).orElse("");
+        var auth = authenticator.authenticate(endpoint.clientIdentifier(), username, password);
+        if (!auth.passed()) {
+            log.info("Authentication failed: " + endpoint.clientIdentifier() + ", username: " + username + ", reason: " + auth.reason());
+            return ConnectAcknowledge.reject(MqttConnectReturnCode.CONNECTION_REFUSED_BAD_USERNAME_OR_PASSWORD, properties);
+        }
         boolean sessionPresent = false;
         if (endpoint.isCleanSession()) {
             cleanSession(endpoint.clientIdentifier());
@@ -161,7 +175,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         vertx.cancelTimer(timerId);
     }
 

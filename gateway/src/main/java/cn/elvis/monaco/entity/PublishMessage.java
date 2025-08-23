@@ -32,19 +32,15 @@ public interface PublishMessage {
 
     MqttProperties properties();
 
-    PublishMessage setRetain(boolean retain);
-
-    PublishMessage setTopic(String topic);
-
-    static PublishMessage of(MqttPublishMessage mqttPublishMessage) {
-        return new PublishMessageImpl(mqttPublishMessage);
+    static PublishMessage of(MqttPublishMessage mqttPublishMessage, String senderId) {
+        return new PublishMessageImpl(mqttPublishMessage, senderId);
     }
 
-    static PublishMessage of(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain) {
-        return new PublishMessageImpl(source, topic, qos, duplicate, retain);
+    static PublishMessage of(MqttPublishMessage source, String topic, MqttQoS qos, boolean duplicate, boolean retain, String senderId) {
+        return new PublishMessageImpl(source, topic, qos, duplicate, retain, senderId);
     }
 
-    static PublishMessage of(int packetId, MqttWill will) {
-        return new PublishMessageImpl(packetId, will);
+    static PublishMessage of(int packetId, String senderId, MqttWill will) {
+        return new PublishMessageImpl(packetId, senderId, will);
     }
 }

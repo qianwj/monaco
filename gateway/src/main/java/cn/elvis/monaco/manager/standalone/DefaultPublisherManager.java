@@ -1,4 +1,4 @@
-package cn.elvis.monaco.session;
+package cn.elvis.monaco.manager.standalone;
 
 import cn.elvis.monaco.ChannelKeys;
 import cn.elvis.monaco.entity.ack.*;
@@ -19,7 +19,6 @@ import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.mqtt.MqttEndpoint;
-import io.vertx.mqtt.messages.MqttPubRecMessage;
 import io.vertx.mqtt.messages.MqttPublishMessage;
 
 /**
@@ -83,7 +82,7 @@ public final class DefaultPublisherManager implements PublisherManager {
         }
         MqttQoS qos = packet.qosLevel().value() > settings.maximumQualityOfService()
                 ? MqttQoS.valueOf(settings.maximumQualityOfService()) : packet.qosLevel();
-        PublishMessage message = PublishMessage.of(packet, topic, qos, packet.isDup(), packet.isRetain());
+        PublishMessage message = PublishMessage.of(packet, topic, qos, packet.isDup(), packet.isRetain(), endpoint.clientIdentifier());
         if (message.retain()) {
             if (!settings.retainAvailable()) {
                 return new PublishAcknowledge(packet.messageId(), ReasonCode.IMPLEMENTATION_SPECIFIC_ERROR, properties);
@@ -131,7 +130,7 @@ public final class DefaultPublisherManager implements PublisherManager {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         clientSessionCloseListener.close();
     }
 }

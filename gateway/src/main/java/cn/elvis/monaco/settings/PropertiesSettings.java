@@ -1,5 +1,6 @@
 package cn.elvis.monaco.settings;
 
+import cn.elvis.monaco.authentication.AuthenticationMode;
 import cn.elvis.monaco.transport.TransportType;
 
 import java.util.Objects;
@@ -21,6 +22,8 @@ public final class PropertiesSettings implements Settings {
     private final Settings defaultSettings;
 
     private final Properties properties;
+
+    private final AuthenticationMode authenticationMode;
 
     private final TransportSettings tcpTransportConfig;
 
@@ -44,6 +47,9 @@ public final class PropertiesSettings implements Settings {
                 EnvironmentSettings.WS_TRANSPORT_KEY_PREFIX
         );
         this.metricsConfig = getMetricsSettings();
+        this.authenticationMode = AuthenticationMode.valueOf(
+                value(EnvironmentSettings.AUTHENTICATION_MODE_KEY, defaultSettings.authenticationMode()::name)
+        );
     }
 
     public static PropertiesSettings systemDefault() {
@@ -111,13 +117,18 @@ public final class PropertiesSettings implements Settings {
     }
 
     @Override
-    public int publishQueueMaximum() {
-        return intValue(EnvironmentSettings.PUBLISH_QUEUE_MAXIMUM_KEY, defaultSettings::publishQueueMaximum);
+    public boolean retainAvailable() {
+        return booleanValue(EnvironmentSettings.RETAIN_AVAILABLE_KEY, defaultSettings::retainAvailable);
     }
 
     @Override
-    public boolean retainAvailable() {
-        return booleanValue(EnvironmentSettings.RETAIN_AVAILABLE_KEY, defaultSettings::retainAvailable);
+    public AuthenticationMode authenticationMode() {
+        return authenticationMode;
+    }
+
+    @Override
+    public String fileAuthenticationPath() {
+        return value(EnvironmentSettings.FILE_AUTHENTICATION_PATH_KEY, defaultSettings::fileAuthenticationPath);
     }
 
     @Override

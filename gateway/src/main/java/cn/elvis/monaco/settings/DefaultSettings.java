@@ -1,5 +1,6 @@
 package cn.elvis.monaco.settings;
 
+import cn.elvis.monaco.authentication.AuthenticationMode;
 import cn.elvis.monaco.transport.TransportType;
 
 /**
@@ -97,13 +98,18 @@ public final class DefaultSettings implements Settings {
     }
 
     @Override
-    public int publishQueueMaximum() {
-        return PUBLISH_QUEUE_MAXIMUM;
+    public boolean retainAvailable() {
+        return false;
     }
 
     @Override
-    public boolean retainAvailable() {
-        return false;
+    public AuthenticationMode authenticationMode() {
+        return AuthenticationMode.ALLOW_ANONYMOUS;
+    }
+
+    @Override
+    public String fileAuthenticationPath() {
+        return "authentication.json";
     }
 
     @Override

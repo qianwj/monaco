@@ -16,7 +16,7 @@ public interface WillMessage {
 
     PublishMessage body();
 
-    static WillMessage create(MqttWill will) {
-        return new WillMessageImpl(will);
+    static WillMessage create(MqttWill will, String senderId) {
+        return new WillMessageImpl(will, senderId);
     }
 }

@@ -1,4 +1,4 @@
-package cn.elvis.monaco.session;
+package cn.elvis.monaco.manager.standalone;
 
 import cn.elvis.monaco.ChannelKeys;
 import cn.elvis.monaco.entity.WillMessage;
@@ -53,7 +53,7 @@ public final class DefaultWillManager implements WillManager {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         clientSessionCloseListener.close();
     }
 }

@@ -18,8 +18,9 @@ public final class WillMessageImpl implements WillMessage {
 
     private final Duration delayInterval;
 
-    WillMessageImpl(MqttWill will) {
-        this.body = PublishMessage.of(-1, will);
+    WillMessageImpl(MqttWill will, String senderId) {
+        // todo: generate packetId for will message.
+        this.body = PublishMessage.of(-1, senderId, will);
         this.delayInterval = Optional.ofNullable(
                         will.getWillProperties()
                                 .getProperty(MqttProperties.MqttPropertyType.WILL_DELAY_INTERVAL.value())

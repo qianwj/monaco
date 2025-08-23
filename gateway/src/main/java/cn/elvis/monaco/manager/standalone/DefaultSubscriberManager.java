@@ -1,4 +1,4 @@
-package cn.elvis.monaco.session;
+package cn.elvis.monaco.manager.standalone;
 
 import cn.elvis.monaco.ChannelKeys;
 import cn.elvis.monaco.entity.ack.SubscribeAcknowledge;
@@ -131,7 +131,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
 //        willPublishListener.close();
     }
 }

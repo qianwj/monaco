@@ -1,7 +1,5 @@
-package cn.elvis.monaco.session;
+package cn.elvis.monaco.manager.standalone;
 
-import cn.elvis.monaco.ChannelKeys;
-import cn.elvis.monaco.entity.PublishMessage;
 import cn.elvis.monaco.listener.ClientSessionSubscribeListener;
 import cn.elvis.monaco.manager.RetainMessageManager;
 import cn.elvis.monaco.settings.Settings;
@@ -10,10 +8,7 @@ import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author qianwj
@@ -60,7 +55,7 @@ public final class DefaultRetainMessageManager implements RetainMessageManager {
     }
 
     @Override
-    public void close() {
+    public void shutdown() {
         if (Objects.nonNull(clientSessionSubscribeListener)) {
             clientSessionSubscribeListener.close();
         }

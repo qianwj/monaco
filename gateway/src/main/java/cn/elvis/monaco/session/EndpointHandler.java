@@ -1,24 +1,17 @@
 package cn.elvis.monaco.session;
 
 import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
-import cn.elvis.monaco.entity.ack.SubscribeAcknowledge;
 import cn.elvis.monaco.entity.WillMessage;
 import cn.elvis.monaco.manager.*;
 import cn.elvis.monaco.metrics.Metrics;
-import cn.elvis.monaco.settings.Settings;
-import cn.elvis.monaco.utils.Lists;
-import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import io.vertx.core.Handler;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.core.json.Json;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.messages.codes.MqttDisconnectReasonCode;
-import io.vertx.mqtt.messages.codes.MqttSubAckReasonCode;
 
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The simplest MQTT Broker
@@ -42,15 +35,6 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     private static final Logger log = LoggerFactory.getLogger(EndpointHandler.class);
 
-    /**
-     * Stored published message state whether this message received.
-     * key: message_id
-     * value:
-     *    key:   receiver_client_id
-     *    value: true is received
-     */
-    private static final Map<Integer, Map<String, Boolean>> messageStateStore = new ConcurrentHashMap<>();
-
     private final ClientSessionManager clientSessionManager;
 
     private final PacketIdentifierManager packetIdentifierManager;
@@ -61,23 +45,15 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
 
     private final WillManager willManager;
 
-    private final RetainMessageManager retainMessageManager;
-
-    private final Settings settings;
-
     public EndpointHandler(ClientSessionManager clientSessionManager, PacketIdentifierManager packetIdentifierManager,
                            PublisherManager publisherManager,
                            SubscriberManager subscriberManager,
-                           WillManager willManager,
-                           RetainMessageManager retainMessageManager,
-                           Settings settings) {
+                           WillManager willManager) {
         this.clientSessionManager = clientSessionManager;
         this.packetIdentifierManager = packetIdentifierManager;
         this.publisherManager = publisherManager;
         this.subscriberManager = subscriberManager;
         this.willManager = willManager;
-        this.retainMessageManager = retainMessageManager;
-        this.settings = settings;
     }
 
     @Override
@@ -106,7 +82,7 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
         }
         log.info("Client session [" + endpoint.clientIdentifier() + "] connected. Store will? " + endpoint.will().isWillFlag());
         if (endpoint.will().isWillFlag()) {
-            WillMessage will = WillMessage.create(endpoint.will());
+            WillMessage will = WillMessage.create(endpoint.will(), endpoint.clientIdentifier());
             willManager.addWill(endpoint.clientIdentifier(), will);
         }
         return clientSessionManager.get(endpoint.clientIdentifier());
@@ -172,7 +148,6 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             clientSessionManager.heartbeat(endpoint.clientIdentifier());
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
             // todo: remove receivers message
-
             // todo: remove unacked message from client
         });
     }

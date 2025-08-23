@@ -1,5 +1,8 @@
 package cn.elvis.monaco.settings;
 
+import cn.elvis.monaco.authentication.AuthenticationMode;
+import io.netty.util.internal.StringUtil;
+
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -36,9 +39,11 @@ public interface Settings {
 
     boolean sharedSubscriptionAvailable();
 
-    int publishQueueMaximum();
-
     boolean retainAvailable();
+
+    AuthenticationMode authenticationMode();
+
+    String fileAuthenticationPath();
 
     TransportSettings tcp();
 
@@ -65,5 +70,34 @@ public interface Settings {
     static Optional<String> value(String key, Function<String, String> valueMapper) {
         return Optional.ofNullable(valueMapper.apply(key))
                 .flatMap(v -> v.isBlank() ? Optional.empty() : Optional.of(v));
+    }
+
+    static void validate(Settings settings) {
+        if (settings.maximumSessionCount() <= 0) {
+            throw new IllegalArgumentException("maximumSessionCount must be greater than 0");
+        }
+        if (settings.maximumClientIdentifierLength() <= 0) {
+            throw new IllegalArgumentException("maximumClientIdentifierLength must be greater than 0");
+        }
+        if (settings.defaultSessionExpiryInterval() <= 0) {
+            throw new IllegalArgumentException("defaultSessionExpiryInterval must be greater than 0");
+        }
+        if (settings.maxSessionExpiryInterval() <= 0) {
+            throw new IllegalArgumentException("maxSessionExpiryInterval must be greater than 0");
+        }
+        if (settings.defaultReceiveMaximum() <= 0) {
+            throw new IllegalArgumentException("defaultReceiveMaximum must be greater than 0");
+        }
+        if (settings.maxReceiveMaximum() <= 0) {
+            throw new IllegalArgumentException("maxReceiveMaximum must be greater than 0");
+        }
+        if (settings.topicAliasMaximum() <= 0) {
+            throw new IllegalArgumentException("topicAliasMaximum must be greater than 0");
+        }
+        if (settings.authenticationMode() == AuthenticationMode.FILE) {
+            if (StringUtil.isNullOrEmpty(settings.fileAuthenticationPath())) {
+                throw new IllegalArgumentException("fileAuthenticationPath must not be null or empty");
+            }
+        }
     }
 }

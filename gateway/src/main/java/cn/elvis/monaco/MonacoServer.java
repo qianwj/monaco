@@ -2,6 +2,7 @@ package cn.elvis.monaco;
 
 import cn.elvis.monaco.entity.codec.EventMessageCodec;
 import cn.elvis.monaco.manager.*;
+import cn.elvis.monaco.manager.standalone.*;
 import cn.elvis.monaco.metrics.Metrics;
 import cn.elvis.monaco.session.*;
 import cn.elvis.monaco.settings.Settings;
@@ -12,11 +13,13 @@ import cn.elvis.monaco.transport.WebSocketTransport;
 import io.vertx.core.*;
 import io.vertx.micrometer.MicrometerMetricsFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Monaco Server, a simple and lightweight mqtt broker.
+ * - authenticator module
+ * - settings module
+ * - manager module
+ * - store module
+ * - transport module
  *
  * @author qianwj
  * @since  0.0.1
@@ -27,9 +30,8 @@ public final class MonacoServer {
 
     private final Settings settings;
 
-    private final List<Manager> managers = new ArrayList<>();
-
     public MonacoServer(Settings settings) {
+        Settings.validate(settings);
         this.settings = settings;
         this.vertx = createVertx();
     }
@@ -41,9 +43,6 @@ public final class MonacoServer {
     }
 
     public void stop() {
-        for (Manager manager : managers) {
-            manager.close();
-        }
         vertx.close();
     }
 
@@ -71,16 +70,12 @@ public final class MonacoServer {
         final PublisherManager publisherManager = new DefaultPublisherManager(settings, vertx, clientSessionStore, topicAliasStore, retainMessageStore);
         final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus(), subscriptionStore);
         final WillManager willManager = new DefaultWillManager(vertx.eventBus());
-        final RetainMessageManager retainMessageManager = new DefaultRetainMessageManager(settings, vertx.eventBus(), retainMessageStore);
-        managers.addAll(List.of(clientSessionManager, subscriberManager, willManager, retainMessageManager));
         final EndpointHandler handler = new EndpointHandler(
                 clientSessionManager,
                 packetIdentifierManager,
                 publisherManager,
                 subscriberManager,
-                willManager,
-                retainMessageManager,
-                settings
+                willManager
         );
         vertx.deployVerticle(
                 () -> new PushService(subscriptionStore, clientSessionStore),
