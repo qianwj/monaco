@@ -122,6 +122,11 @@ public final class PropertiesSettings implements Settings {
     }
 
     @Override
+    public int serverKeepaliveIntervalMaximum() {
+        return intValue(EnvironmentSettings.SERVER_KEEPALIVE_MAXIMUM_KEY, defaultSettings::serverKeepaliveIntervalMaximum);
+    }
+
+    @Override
     public AuthenticationMode authenticationMode() {
         return authenticationMode;
     }

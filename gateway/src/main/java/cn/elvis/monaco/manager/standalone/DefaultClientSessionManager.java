@@ -25,6 +25,7 @@ import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttAuth;
 import io.vertx.mqtt.MqttEndpoint;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -122,6 +123,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                     MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.TOPIC_ALIAS_MAXIMUM, settings.topicAliasMaximum()),
                     settings.topicAliasMaximum()
             );
+            int serverKeepalive = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.SERVER_KEEP_ALIVE, 0);
             topicAliasStore.setTopicAliasMaximum(endpoint.clientIdentifier(), topicAliasMaximum);
             properties
                     .withProperty(MqttPropertyType.SESSION_EXPIRY_INTERVAL, sessionExpiryInterval)
@@ -134,11 +136,19 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                     .withAvailableOption(MqttPropertyType.SUBSCRIPTION_IDENTIFIER_AVAILABLE, settings.subscriptionIdentifierAvailable())
                     .withAvailableOption(MqttPropertyType.SHARED_SUBSCRIPTION_AVAILABLE, settings.sharedSubscriptionAvailable())
             ;
-            // todo: Server Keep Alive
+            // use server keepalive
+            if (serverKeepalive > 0) {
+                // store server keep alive
+                serverKeepalive = Math.min(serverKeepalive, settings.serverKeepaliveIntervalMaximum());
+                properties.withProperty(MqttPropertyType.SERVER_KEEP_ALIVE, serverKeepalive);
+            } else {
+                // store client keep alive
+                serverKeepalive = endpoint.keepAliveTimeSeconds();
+            }
             // todo: Response Information
             // todo: Authentication Method
             // todo: Authentication Data
-            ClientSession session = new DefaultClientSession(endpoint, sessionExpiryInterval, receiveMaximum, messageStore);
+            ClientSession session = new DefaultClientSession(vertx, endpoint, sessionExpiryInterval, receiveMaximum, serverKeepalive, messageStore);
             clientSessionStore.add(session);
             session.init();
             log.info("Client session [" + session.identifier() + "] registered. expiry time: " + session.expiryTime());

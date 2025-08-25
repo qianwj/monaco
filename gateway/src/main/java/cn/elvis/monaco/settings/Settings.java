@@ -41,6 +41,11 @@ public interface Settings {
 
     boolean retainAvailable();
 
+    /**
+     * Maximum server keepalive interval. Time Unit: seconds.
+     */
+    int serverKeepaliveIntervalMaximum();
+
     AuthenticationMode authenticationMode();
 
     String fileAuthenticationPath();
@@ -93,6 +98,9 @@ public interface Settings {
         }
         if (settings.topicAliasMaximum() <= 0) {
             throw new IllegalArgumentException("topicAliasMaximum must be greater than 0");
+        }
+        if (settings.serverKeepaliveIntervalMaximum() > 65536 || settings.maximumQualityOfService() <= 0) {
+            throw new IllegalArgumentException("serverKeepaliveIntervalMaximum must be less than 65535 or greater than 0");
         }
         if (settings.authenticationMode() == AuthenticationMode.FILE) {
             if (StringUtil.isNullOrEmpty(settings.fileAuthenticationPath())) {

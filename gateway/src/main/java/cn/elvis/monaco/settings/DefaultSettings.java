@@ -21,7 +21,7 @@ public final class DefaultSettings implements Settings {
 
     private static final int TOPIC_ALIAS_MAXIMUM = 500;
 
-    private static final int PUBLISH_QUEUE_MAXIMUM = 1000;
+    private static final int MAXIMUM_SERVER_KEEPALIVE_INTERVAL_SECONDS = 30;
 
     private static final DefaultSettings INSTANCE = new DefaultSettings();
 
@@ -100,6 +100,11 @@ public final class DefaultSettings implements Settings {
     @Override
     public boolean retainAvailable() {
         return false;
+    }
+
+    @Override
+    public int serverKeepaliveIntervalMaximum() {
+        return MAXIMUM_SERVER_KEEPALIVE_INTERVAL_SECONDS;
     }
 
     @Override

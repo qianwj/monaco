@@ -6,11 +6,13 @@ import cn.elvis.monaco.exception.Exceptions;
 import cn.elvis.monaco.exception.ProtocolException;
 import cn.elvis.monaco.store.MessageStore;
 import io.netty.handler.codec.mqtt.MqttProperties;
+import io.vertx.core.Vertx;
 import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttEndpoint;
 import io.vertx.mqtt.messages.codes.MqttPubRelReasonCode;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -34,6 +36,8 @@ public final class DefaultClientSession implements ClientSession {
 
     private final Instant expiredTime;
 
+    private final Vertx vertx;
+
     private final MqttEndpoint endpoint;
 
     private final MessageStore messageStore;
@@ -42,17 +46,24 @@ public final class DefaultClientSession implements ClientSession {
 
     private final int receiveMaximum;
 
+    private final long heartbeatCheckerId;
+
     private volatile boolean closed;
 
-    public DefaultClientSession(MqttEndpoint endpoint,
+    public DefaultClientSession(Vertx vertx,
+                                MqttEndpoint endpoint,
                                 int expiryInterval,
                                 int receiveMaximum,
+                                int keepaliveInterval,
                                 MessageStore messageStore) {
         this.endpoint = endpoint;
+        this.vertx = vertx;
         this.expiredTime = Instant.now().plusMillis(expiryInterval);
         this.messageStore = messageStore;
         this.bucket = new HashSet<>();
         this.receiveMaximum = receiveMaximum;
+        this.heartbeatCheckerId = setHeartbeatChecker(vertx, keepaliveInterval);
+
     }
 
     public void init() {
@@ -135,6 +146,7 @@ public final class DefaultClientSession implements ClientSession {
     @Override
     public void close() {
         closed = true;
+        vertx.cancelTimer(heartbeatCheckerId);
         endpoint.close();
     }
 
@@ -156,5 +168,14 @@ public final class DefaultClientSession implements ClientSession {
 //            }
         }
         return false;
+    }
+
+    private long setHeartbeatChecker(Vertx vertx, int keepaliveSeconds) {
+        return vertx.setTimer(keepaliveSeconds * 1500L, timerId -> {
+            if (!Duration.between(Instant.now(), Instant.ofEpochMilli(lastActiveTime.get())).isPositive()) {
+                // timeout, should close connection
+                close();
+            }
+        });
     }
 }

@@ -39,6 +39,8 @@ public final class EnvironmentSettings implements Settings {
 
     static final String SHARD_SUBSCRIPTION_AVAILABLE_KEY = KEY_PREFIX + "SHARD_SUBSCRIPTION_AVAILABLE";
 
+    static final String SERVER_KEEPALIVE_MAXIMUM_KEY = KEY_PREFIX + "SERVER_KEEPALIVE_MAXIMUM";
+
     static final String AUTHENTICATION_MODE_KEY = KEY_PREFIX + "AUTHENTICATION_MODE";
 
     static final String FILE_AUTHENTICATION_PATH_KEY = KEY_PREFIX + "FILE_AUTHENTICATION_PATH";
@@ -159,6 +161,11 @@ public final class EnvironmentSettings implements Settings {
     @Override
     public boolean retainAvailable() {
         return Settings.booleanValue(RETAIN_AVAILABLE_KEY, System::getenv, defaultSettings::retainAvailable);
+    }
+
+    @Override
+    public int serverKeepaliveIntervalMaximum() {
+        return Settings.intValue(SERVER_KEEPALIVE_MAXIMUM_KEY, System::getenv, defaultSettings::serverKeepaliveIntervalMaximum);
     }
 
     @Override
