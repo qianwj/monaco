@@ -22,7 +22,9 @@ public interface ClientSession extends Subscriber {
     String identifier();
 
 
-    boolean authorized();
+    boolean isAuthorized();
+
+    void authorized();
 
     boolean isExpired();
 

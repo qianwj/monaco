@@ -1,5 +1,7 @@
 package cn.elvis.monaco.session;
 
+import cn.elvis.monaco.authentication.Authentications;
+import cn.elvis.monaco.authentication.EnhancedAuthenticator;
 import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
 import cn.elvis.monaco.entity.WillMessage;
 import cn.elvis.monaco.manager.*;
@@ -149,6 +151,17 @@ public final class EndpointHandler implements Handler<MqttEndpoint> {
             log.info("client[" + endpoint.clientIdentifier() + "] receive PUBCOMP packet: " + messageId);
             // todo: remove receivers message
             // todo: remove unacked message from client
+        });
+    }
+
+    private void enhancedAuthentication(MqttEndpoint endpoint) {
+        endpoint.authenticationExchangeHandler(packet -> {
+            var result = Authentications.enhancedAuthenticator()
+                    .authenticate(endpoint.clientIdentifier(), packet.authenticationMethod(), packet.authenticationData());
+            if (result.stage() == EnhancedAuthenticator.Stage.SUCCESS) {
+                clientSessionManager.get(endpoint.clientIdentifier())
+                        .ifPresent(ClientSession::authorized);
+            }
         });
     }
 }

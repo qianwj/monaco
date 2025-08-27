@@ -103,7 +103,12 @@ public final class DefaultClientSession implements ClientSession {
     }
 
     @Override
-    public boolean authorized() {
+    public void authorized() {
+        this.authorized = true;
+    }
+
+    @Override
+    public boolean isAuthorized() {
         return authorized;
     }
 

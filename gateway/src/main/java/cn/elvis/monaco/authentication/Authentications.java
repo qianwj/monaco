@@ -18,7 +18,7 @@ public final class Authentications {
     }
 
     // todo: support enhanced authenticate.
-    public static EnhancedAuthenticator createEnhancedAuthenticator() {
+    public static EnhancedAuthenticator enhancedAuthenticator() {
         return NOT_AUTH;
     }
 }

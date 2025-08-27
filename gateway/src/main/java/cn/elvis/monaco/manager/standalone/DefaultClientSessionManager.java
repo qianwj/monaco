@@ -25,9 +25,7 @@ import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttAuth;
 import io.vertx.mqtt.MqttEndpoint;
-import io.vertx.mqtt.messages.codes.MqttAuthenticateReasonCode;
 
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -151,8 +149,8 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
             properties.withAvailableOption(MqttPropertyType.RESPONSE_INFORMATION, requestResponseInformation);
             EnhancedAuthenticator.AuthenticationStage authenticationStage = EnhancedAuthenticator.AuthenticationStage
                     .init(endpoint.clientIdentifier(), endpoint.connectProperties());
-            EnhancedAuthenticator enhancedAuthenticator = Authentications.createEnhancedAuthenticator();
-            authenticationStage = enhancedAuthenticator.authenticate(authenticationStage.clientId(), authenticationStage.method(), authenticationStage.data());
+            authenticationStage = Authentications.enhancedAuthenticator()
+                    .authenticate(authenticationStage.clientId(), authenticationStage.method(), authenticationStage.data());
             boolean authorized = authenticationStage.stage() == EnhancedAuthenticator.Stage.SUCCESS;
             properties.withProperty(MqttPropertyType.AUTHENTICATION_METHOD, authenticationStage.method())
                     .withProperty(MqttPropertyType.AUTHENTICATION_DATA, authenticationStage.data());
