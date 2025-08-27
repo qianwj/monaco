@@ -107,6 +107,8 @@ public final class MonacoServer {
         System.out.println("   default_receive_maximum: " + settings.defaultReceiveMaximum());
         System.out.println("   topic_alias_maximum: " + settings.topicAliasMaximum());
         System.out.println("   retain_available: " + settings.retainAvailable());
+        System.out.println("   maximum_quality_of_service: " + settings.maximumQualityOfService());
+        System.out.println("   server_keepalive_interval_maximum: " + settings.serverKeepaliveIntervalMaximum());
         System.out.println("   tcp_transport_config: " + settings.tcp());
         System.out.println("   websocket_transport_config: " + settings.webSocket());
         System.out.println("   metrics: " + settings.metrics());

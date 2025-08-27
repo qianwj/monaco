@@ -46,15 +46,21 @@ public final class DefaultClientSession implements ClientSession {
 
     private final int receiveMaximum;
 
+    private final boolean requestResponseInformation;
+
     private final long heartbeatCheckerId;
 
     private volatile boolean closed;
+
+    private volatile boolean authorized;
 
     public DefaultClientSession(Vertx vertx,
                                 MqttEndpoint endpoint,
                                 int expiryInterval,
                                 int receiveMaximum,
                                 int keepaliveInterval,
+                                boolean requestResponseInformation,
+                                boolean authorized,
                                 MessageStore messageStore) {
         this.endpoint = endpoint;
         this.vertx = vertx;
@@ -62,8 +68,9 @@ public final class DefaultClientSession implements ClientSession {
         this.messageStore = messageStore;
         this.bucket = new HashSet<>();
         this.receiveMaximum = receiveMaximum;
+        this.requestResponseInformation = requestResponseInformation;
         this.heartbeatCheckerId = setHeartbeatChecker(vertx, keepaliveInterval);
-
+        this.authorized = authorized;
     }
 
     public void init() {
@@ -91,13 +98,13 @@ public final class DefaultClientSession implements ClientSession {
     }
 
     @Override
-    public boolean cleanStart() {
-        return endpoint.isCleanSession();
+    public String identifier() {
+        return endpoint.clientIdentifier();
     }
 
     @Override
-    public String identifier() {
-        return endpoint.clientIdentifier();
+    public boolean authorized() {
+        return authorized;
     }
 
     @Override
@@ -136,6 +143,11 @@ public final class DefaultClientSession implements ClientSession {
     @Override
     public void ack(int packedId) {
         bucket.remove(packedId);
+    }
+
+    @Override
+    public boolean requestResponseInformation() {
+        return requestResponseInformation;
     }
 
     @Override

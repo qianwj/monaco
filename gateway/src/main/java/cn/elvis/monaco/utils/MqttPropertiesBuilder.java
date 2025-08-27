@@ -1,6 +1,7 @@
 package cn.elvis.monaco.utils;
 
 import io.netty.handler.codec.mqtt.MqttProperties;
+import io.vertx.core.buffer.Buffer;
 
 import java.util.Objects;
 
@@ -40,6 +41,13 @@ public final class MqttPropertiesBuilder {
     public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, int value) {
         if (Objects.nonNull(propertyType)) {
             properties.add(new MqttProperties.IntegerProperty(propertyType.value(), value));
+        }
+        return this;
+    }
+
+    public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, Buffer value) {
+        if (Objects.nonNull(propertyType) && Objects.nonNull(value)) {
+            properties.add(new MqttProperties.BinaryProperty(propertyType.value(), value.getBytes()));
         }
         return this;
     }

@@ -3,6 +3,7 @@ package cn.elvis.monaco.manager.standalone;
 import cn.elvis.monaco.ChannelKeys;
 import cn.elvis.monaco.authentication.Authentications;
 import cn.elvis.monaco.authentication.Authenticator;
+import cn.elvis.monaco.authentication.EnhancedAuthenticator;
 import cn.elvis.monaco.entity.ack.ConnectAcknowledge;
 import cn.elvis.monaco.entity.events.ClientSessionClose;
 import cn.elvis.monaco.manager.ClientSessionManager;
@@ -24,6 +25,7 @@ import io.vertx.core.internal.logging.Logger;
 import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.mqtt.MqttAuth;
 import io.vertx.mqtt.MqttEndpoint;
+import io.vertx.mqtt.messages.codes.MqttAuthenticateReasonCode;
 
 import java.util.Map;
 import java.util.Optional;
@@ -60,7 +62,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                                        MessageStore messageStore) {
         this.settings = settings;
         this.vertx = vertx;
-        this.authenticator = Authentications.create(settings, vertx);
+        this.authenticator = Authentications.createAuthenticator(settings, vertx);
         this.topicAliasStore = topicAliasStore;
         this.clientSessionStore = clientSessionStore;
         this.timerId = vertx.setTimer(1000, id -> removeExpiredSessions());
@@ -145,10 +147,24 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
                 // store client keep alive
                 serverKeepalive = endpoint.keepAliveTimeSeconds();
             }
-            // todo: Response Information
-            // todo: Authentication Method
-            // todo: Authentication Data
-            ClientSession session = new DefaultClientSession(vertx, endpoint, sessionExpiryInterval, receiveMaximum, serverKeepalive, messageStore);
+            boolean requestResponseInformation = MqttPropertiesUtils.boolValue(endpoint.connectProperties(), MqttPropertyType.REQUEST_RESPONSE_INFORMATION, false);
+            properties.withAvailableOption(MqttPropertyType.RESPONSE_INFORMATION, requestResponseInformation);
+            EnhancedAuthenticator.AuthenticationStage authenticationStage = EnhancedAuthenticator.AuthenticationStage
+                    .init(endpoint.clientIdentifier(), endpoint.connectProperties());
+            EnhancedAuthenticator enhancedAuthenticator = Authentications.createEnhancedAuthenticator();
+            authenticationStage = enhancedAuthenticator.authenticate(authenticationStage.clientId(), authenticationStage.method(), authenticationStage.data());
+            boolean authorized = authenticationStage.stage() == EnhancedAuthenticator.Stage.SUCCESS;
+            properties.withProperty(MqttPropertyType.AUTHENTICATION_METHOD, authenticationStage.method())
+                    .withProperty(MqttPropertyType.AUTHENTICATION_DATA, authenticationStage.data());
+            ClientSession session = new DefaultClientSession(vertx,
+                    endpoint,
+                    sessionExpiryInterval,
+                    receiveMaximum,
+                    serverKeepalive,
+                    requestResponseInformation,
+                    authorized,
+                    messageStore
+            );
             clientSessionStore.add(session);
             session.init();
             log.info("Client session [" + session.identifier() + "] registered. expiry time: " + session.expiryTime());

@@ -99,7 +99,7 @@ public interface Settings {
         if (settings.topicAliasMaximum() <= 0) {
             throw new IllegalArgumentException("topicAliasMaximum must be greater than 0");
         }
-        if (settings.serverKeepaliveIntervalMaximum() > 65536 || settings.maximumQualityOfService() <= 0) {
+        if (settings.serverKeepaliveIntervalMaximum() > 65536 || settings.serverKeepaliveIntervalMaximum() <= 0) {
             throw new IllegalArgumentException("serverKeepaliveIntervalMaximum must be less than 65535 or greater than 0");
         }
         if (settings.authenticationMode() == AuthenticationMode.FILE) {
