@@ -32,6 +32,15 @@ public final class Topics {
     }
 
 
+    public static TopicTree createSystemTree() {
+        return new TopicTree("$sys");
+    }
+
+    public static TopicTree createNormalTree() {
+        return new TopicTree("/");
+    }
+
+
     /**
      * 校验MQTT主题过滤器是否合法
      * @param topicFilter 要校验的主题过滤器

@@ -70,9 +70,10 @@ public final class Topic {
     @Override
     public boolean equals(Object object) {
         if (this == object) return true;
-        if (object == null || getClass() != object.getClass()) return false;
-        Topic topic = (Topic) object;
-        return Objects.equals(topic.raw, raw);
+        if (object instanceof Topic other) {
+            return Objects.equals(other.raw, raw);
+        }
+        return false;
     }
 
     @Override

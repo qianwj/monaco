@@ -31,6 +31,8 @@ dependencies {
     implementation(libs.vertx.metrics)
 
     implementation("org.rocksdb:rocksdbjni:10.2.1")
+    // https://mvnrepository.com/artifact/org.eclipse.collections/eclipse-collections
+    implementation("org.eclipse.collections:eclipse-collections:13.0.0")
 
     implementation(libs.metrics.prometheus)
     implementation(libs.jackson.databind)
