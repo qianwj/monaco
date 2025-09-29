@@ -4,6 +4,11 @@ import cn.elvis.monaco.entity.Subscription;
 
 import java.util.*;
 
+/**
+ * Mqtt Topic Tree Node
+ * @author qianwj
+ * @since  0.0.1
+ */
 public final class TopicTreeNode {
 
     private final List<TopicTreeNode> children = new ArrayList<>();
@@ -14,16 +19,43 @@ public final class TopicTreeNode {
 
     private final boolean shareable;
 
-    private final int level;
-
-    public TopicTreeNode(String segment, int level, boolean shareable) {
+    public TopicTreeNode(String segment, boolean shareable) {
         this.segment = segment;
         this.shareable = shareable;
-        this.level = level;
     }
 
     public void addChild(String[] segment, int level, Subscription subscription) {
         String cur = segment[level];
-        // todo: add child
+        if (Topics.SINGLE_WILDCARD_TOKEN.equals(cur)) {
+            for (TopicTreeNode child : children) {
+                child.addChild(segment, level + 1, subscription);
+                subscriptions.add(subscription);
+            }
+        } else if (Topics.MULTI_WILDCARD_TOKEN.equals(cur)) {
+            subscriptions.add(subscription);
+            if (level < segment.length - 1) {
+                String next = segment[1 + level];
+                for (TopicTreeNode child : children) {
+                    if (Objects.equals(child.segment, next)) {
+                        child.addChild(segment, level + 1, subscription);
+                    }
+                }
+            } else {
+                for (TopicTreeNode child : children) {
+                    child.addChild(segment, level, subscription);
+                }
+            }
+        } else {
+            for (TopicTreeNode child : children) {
+                if (Objects.equals(cur, child.segment)) {
+                    child.addChild(segment, level + 1, subscription);
+                }
+            }
+        }
     }
+
+//    public List<Subscription> subscriptions(Topic filter) {
+//        List<Subscription> result = new ArrayList<>();
+//
+//    }
 }

@@ -11,7 +11,7 @@ public final class TopicTree {
     }
 
     TopicTree(String prefixToken, boolean shareable) {
-        root = new TopicTreeNode(prefixToken, 0, shareable);
+        root = new TopicTreeNode(prefixToken, shareable);
     }
 
     public void addSubscription(Subscription subscription) {
