@@ -24,7 +24,15 @@ public final class TopicTreeNode {
         this.shareable = shareable;
     }
 
-    public void addChild(String[] segment, int level, Subscription subscription) {
+    List<TopicTreeNode> children() {
+        return children;
+    }
+
+    String segment() {
+        return segment;
+    }
+
+    void addChild(String[] segment, int level, Subscription subscription) {
         String cur = segment[level];
         if (Topics.SINGLE_WILDCARD_TOKEN.equals(cur)) {
             for (TopicTreeNode child : children) {
@@ -54,8 +62,17 @@ public final class TopicTreeNode {
         }
     }
 
-//    public List<Subscription> subscriptions(Topic filter) {
-//        List<Subscription> result = new ArrayList<>();
-//
-//    }
+    // todo: wildcard match
+    List<Subscription> subscriptions(String[] segments, int level) {
+        List<Subscription> subscriptions = new ArrayList<>();
+        if (Objects.equals(segment, segments[level])) {
+            if (level == segments.length - 1) {
+                return new ArrayList<>(subscriptions);
+            }
+            for (TopicTreeNode child : children) {
+                subscriptions.addAll(child.subscriptions(segments, level + 1));
+            }
+        }
+        return subscriptions;
+    }
 }
