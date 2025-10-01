@@ -10,12 +10,16 @@ import java.util.regex.Pattern;
  */
 public final class Topics {
 
+    private static final TopicForest FOREST = TopicForest.create();
+
     // 定义合法字符集（UTF-8字符减去空字符和控制字符）
     private static final Pattern VALID_CHARS = Pattern.compile("[\\u0001-\\uD7FF\\uE000-\\uFFFF]+");
 
     public static final String SINGLE_WILDCARD_TOKEN = "+";
 
     public static final String MULTI_WILDCARD_TOKEN = "#";
+
+    public static final String SEGMENT_SEPARATOR = "/";
 
     public static final String SHARE_PREFIX = "$share";
 
@@ -31,15 +35,9 @@ public final class Topics {
         return new Topic(topicFilter);
     }
 
-
-    public static TopicTree createSystemTree() {
-        return new TopicTree("$sys");
+    public static TopicForest forest() {
+        return FOREST;
     }
-
-    public static TopicTree createNormalTree() {
-        return new TopicTree("/");
-    }
-
 
     /**
      * 校验MQTT主题过滤器是否合法

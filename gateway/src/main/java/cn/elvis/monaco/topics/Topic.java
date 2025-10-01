@@ -1,6 +1,8 @@
 package cn.elvis.monaco.topics;
 
 import java.util.Objects;
+import java.util.Optional;
+import java.util.StringJoiner;
 
 /**
  * Mqtt Topic
@@ -55,6 +57,10 @@ public final class Topic {
         return shareable;
     }
 
+    public Optional<String> shareGroup() {
+        return Objects.isNull(shareGroup) || shareGroup.isBlank() ? Optional.empty() : Optional.of(shareGroup);
+    }
+
     public String filter() {
         return filter;
     }
@@ -79,5 +85,16 @@ public final class Topic {
     @Override
     public int hashCode() {
         return Objects.hash(raw);
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Topic.class.getSimpleName() + "[", "]")
+                .add("wildcard=" + wildcard)
+                .add("shareable=" + shareable)
+                .add("shareGroup='" + shareGroup + "'")
+                .add("filter='" + filter + "'")
+                .add("raw='" + raw + "'")
+                .toString();
     }
 }

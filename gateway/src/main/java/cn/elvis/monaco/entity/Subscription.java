@@ -17,7 +17,7 @@ public interface Subscription {
 
     MqttQoS qos();
 
-    String clientId();
+    String clientIdentifier();
 
     boolean noLocal();
 
@@ -26,6 +26,8 @@ public interface Subscription {
     boolean retainAsPublished();
 
     String topicFilter();
+
+    String toString();
 
     static Subscription of(String clientId, MqttQoS qos, MqttTopicSubscription subscription) {
         return new SubscriptionImpl(clientId, qos, subscription);

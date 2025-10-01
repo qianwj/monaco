@@ -90,6 +90,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
                 continue;
             }
             Subscription subscription = Subscription.of(endpoint.clientIdentifier(), qos, mqttTopicSubscription);
+            Topics.forest().addSubscription(subscription);
             subscriptions.add(subscription);
             boolean reSubscribed = subscriptionStore.exists(endpoint.clientIdentifier(), subscription.topic());
             reasonCodes.add(MqttSubAckReasonCode.qosGranted(subscription.qos()));
@@ -124,6 +125,9 @@ public final class DefaultSubscriberManager implements SubscriberManager {
             reasonCodes.add(MqttUnsubAckReasonCode.SUCCESS);
         }
         if (!validTopicFilters.isEmpty()) {
+            for (String validTopicFilter : validTopicFilters) {
+                Topics.forest().removeSubscription(Topics.createTopic(validTopicFilter), endpoint.clientIdentifier());
+            }
             var removed = subscriptionStore.removeSubscriptions(endpoint.clientIdentifier(), validTopicFilters);
             // todo: handle removed subscriptions
         }

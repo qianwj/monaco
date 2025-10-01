@@ -106,7 +106,6 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         }
 
         if (sessionPresent) {
-            // todo: resume previous connection
             return ConnectAcknowledge.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED, properties);
         }
         if (clientSessionStore.total() + 1 <= settings.maximumSessionCount()) {

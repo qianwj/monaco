@@ -38,7 +38,7 @@ public class PushService extends AbstractVerticle {
         this.consumer = vertx.eventBus().consumer(ChannelKeys.MESSAGE_PUBLISH_CHANNEL, event -> {
            var msg = event.body();
            subscriptionStore.search(Topics.createTopic(msg.topic()), subscription -> {
-               clientSessionStore.get(subscription.clientId()).ifPresent(session -> {
+               clientSessionStore.get(subscription.clientIdentifier()).ifPresent(session -> {
                    try {
                        session.push(msg);
                    } catch (ProtocolException e) {

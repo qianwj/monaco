@@ -9,6 +9,7 @@ import io.vertx.mqtt.MqttTopicSubscription;
 
 import java.util.Objects;
 import java.util.Optional;
+import java.util.StringJoiner;
 
 /**
  * Subscription implementation.
@@ -55,7 +56,7 @@ public final class SubscriptionImpl implements Subscription {
     }
 
     @Override
-    public String clientId() {
+    public String clientIdentifier() {
         return clientId;
     }
 
@@ -77,5 +78,17 @@ public final class SubscriptionImpl implements Subscription {
     @Override
     public String topicFilter() {
         return topic.unwrap();
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Subscription.class.getSimpleName() + "[", "]")
+                .add("clientId='" + clientId + "'")
+                .add("topic=" + topic)
+                .add("qos=" + qos)
+                .add("noLocal=" + noLocal)
+                .add("retainAsPublished=" + retainAsPublished)
+                .add("retainedHandlingPolicy=" + retainedHandlingPolicy)
+                .toString();
     }
 }
