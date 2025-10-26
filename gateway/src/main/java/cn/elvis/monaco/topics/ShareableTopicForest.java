@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static cn.elvis.monaco.topics.TopicTreeNode.printTreeRecursive;
+
 final class ShareableTopicForest implements TopicForest {
 
     private final Map<String, TopicTreeNode> roots = new HashMap<>();
@@ -38,6 +40,8 @@ final class ShareableTopicForest implements TopicForest {
 
     @Override
     public void print() {
-
+        for (Map.Entry<String, TopicTreeNode> group : this.roots.entrySet()) {
+            printTreeRecursive(group.getValue(), group.getKey(), true);
+        }
     }
 }

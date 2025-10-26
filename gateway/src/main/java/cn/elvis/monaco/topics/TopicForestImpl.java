@@ -39,5 +39,10 @@ final class TopicForestImpl implements TopicForest {
     public void print() {
         System.out.println("======================== NORMAL TOPIC FOREST ======================");
         normalTopicTree.print();
+        System.out.println("======================== NORMAL TOPIC FOREST ======================");
+        System.out.println();
+        System.out.println("====================== SHARE_GROUP TOPIC FOREST ===================");
+        shareGroupTopicTree.print();
+        System.out.println("====================== SHARE_GROUP TOPIC FOREST ===================");
     }
 }

@@ -89,26 +89,16 @@ public final class TopicTreeNode {
 
     void removeSubscriptions(String[] segments, int level, String clientIdentifier) {
         String currentSegment = segments[level];
-        switch (currentSegment) {
-            case Topics.SINGLE_WILDCARD_TOKEN ->
-                Optional.ofNullable(singleWildcardNode)
-                        .ifPresent(n -> n.removeSubscriptions(segments, level + 1, clientIdentifier));
-            case Topics.MULTI_WILDCARD_TOKEN ->
-                Optional.ofNullable(multiWildcardNode)
-                        .ifPresent(n -> n.removeSubscriptions(segments, level + 1, clientIdentifier));
-            default -> {
-                if (Objects.equals(segment, Topics.SEGMENT_SEPARATOR)) {
-                    for (TopicTreeNode child : children()) {
-                        child.removeSubscriptions(segments, level, clientIdentifier);
-                    }
-                } else if (Objects.equals(currentSegment, segment)) {
-                    if (level == segments.length - 1) {
-                        subscriptions.removeIf(subscription -> Objects.equals(subscription.clientIdentifier(), clientIdentifier));
-                    }
-                    for (TopicTreeNode child : children()) {
-                        child.removeSubscriptions(segments, level + 1, clientIdentifier);
-                    }
-                }
+        if (Objects.equals(segment, Topics.SEGMENT_SEPARATOR)) {
+            for (TopicTreeNode child : children()) {
+                child.removeSubscriptions(segments, level, clientIdentifier);
+            }
+        } else if (Objects.equals(currentSegment, segment)) {
+            if (level == segments.length - 1) {
+                subscriptions.removeIf(subscription -> Objects.equals(subscription.clientIdentifier(), clientIdentifier));
+            }
+            for (TopicTreeNode child : children()) {
+                child.removeSubscriptions(segments, level + 1, clientIdentifier);
             }
         }
     }
@@ -268,6 +258,24 @@ public final class TopicTreeNode {
         // 递归检查单级通配符节点
         if (singleWildcardNode != null) {
             singleWildcardNode.findMatchingPaths(result, lastSegment);
+        }
+    }
+
+    static void printTreeRecursive(
+            TopicTreeNode node,
+            String prefix,
+            boolean isTail
+    ) {
+        // 打印当前节点
+        System.out.print(prefix);
+        System.out.print(isTail ? "└── " : "├── ");
+        System.out.println(node.segment() + "(" + node.subscriptions.size() + ")");
+
+        // 处理子节点
+        for (int i = 0; i < node.children().size(); i++) {
+            boolean lastChild = (i == node.children().size() - 1);
+            String childPrefix = prefix + (isTail ? "    " : "│   ");
+            printTreeRecursive(node.children().get(i), childPrefix, lastChild);
         }
     }
 }

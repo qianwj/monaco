@@ -60,9 +60,9 @@ public class TopicTreeTest {
         assert subscriptions.size() == 2;
         assert subscriptions.getFirst().equals(subscription1);
         assert subscriptions.get(1).equals(subscription2);
-        subscriptions = tree.subscriptions(Topics.createTopic("a/#/c"));
+        subscriptions = tree.subscriptions(Topics.createTopic("a/#"));
         System.out.println("subscriptions: " + subscriptions);
-        assert subscriptions.size() == 3;
+        assert subscriptions.size() == 5;
     }
 
 
@@ -87,9 +87,66 @@ public class TopicTreeTest {
         System.out.println("subscriptions: " + subscriptions);
         assert subscriptions.size() == 1;
         tree.removeSubscription(Topics.createTopic("a/+/c"), "test");
+        tree.print();
         subscriptions = tree.subscriptions(Topics.createTopic("a/+/c"));
         System.out.println("subscriptions: " + subscriptions);
         assert subscriptions.isEmpty();
+        tree.addSubscription(Subscription.of(
+                "test",
+                MqttQoS.AT_MOST_ONCE,
+                new MqttTopicSubscriptionImpl("a/#", MqttQoS.AT_MOST_ONCE)
+        ));
+        tree.print();
+        tree.removeSubscription(Topics.createTopic("a/+/c"), "test");
+        tree.print();
+        assert tree.subscriptions(Topics.createTopic("a/+/c")).size() == 1;
+        tree.removeSubscription(Topics.createTopic("a/#"), "test");
+        subscriptions = tree.subscriptions(Topics.createTopic("a/#"));
+        System.out.println("subscriptions: " + subscriptions);
+        assert subscriptions.isEmpty();
+    }
+
+    @Test
+    public void testRemoveSingleWildcardSubscription() {
+        TopicForest tree = TopicForest.create();
+        tree.addSubscription(Subscription.of(
+                "rrr",
+                MqttQoS.AT_LEAST_ONCE,
+                new MqttTopicSubscriptionImpl("a/+/c", MqttQoS.AT_LEAST_ONCE)
+        ));
+        tree.print();
+        tree.removeSubscription(Topics.createTopic("a/+/c"), "rrr");
+        tree.print();
+        var subscriptions = tree.subscriptions(Topics.createTopic("a/+/c"));
+        System.out.println("subscriptions: " + subscriptions);
+        assert subscriptions.isEmpty();
+    }
+
+    @Test
+    public void testRemoveMultiWildcardSubscription() {
+        TopicForest tree = TopicForest.create();
+        tree.addSubscription(Subscription.of(
+                "rrr",
+                MqttQoS.AT_LEAST_ONCE,
+                new MqttTopicSubscriptionImpl("a/#", MqttQoS.AT_LEAST_ONCE)
+        ));
+        tree.removeSubscription(Topics.createTopic("a/#"), "rrr");
+        tree.print();
+        var subscriptions = tree.subscriptions(Topics.createTopic("a/#"));
+        System.out.println("subscriptions: " + subscriptions);
+        assert subscriptions.isEmpty();
+    }
+
+    @Test
+    public void testSingleWildcardMatchMultiWildcardSubscription() {
+        TopicForest tree = TopicForest.create();
+        tree.addSubscription(Subscription.of(
+                "rrr",
+                MqttQoS.AT_LEAST_ONCE,
+                new MqttTopicSubscriptionImpl("a/#", MqttQoS.AT_LEAST_ONCE)
+        ));
+        var subscriptions = tree.subscriptions(Topics.createTopic("a/+/c"));
+        assert subscriptions.size() == 1;
     }
 
 }

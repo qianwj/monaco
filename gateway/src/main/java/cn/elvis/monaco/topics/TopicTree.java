@@ -4,6 +4,8 @@ import cn.elvis.monaco.entity.Subscription;
 
 import java.util.List;
 
+import static cn.elvis.monaco.topics.TopicTreeNode.printTreeRecursive;
+
 final class TopicTree implements TopicForest {
 
     private final TopicTreeNode root;
@@ -34,23 +36,5 @@ final class TopicTree implements TopicForest {
 
     public void print() {
         printTreeRecursive(root, "", true);
-    }
-
-    private static void printTreeRecursive(
-            TopicTreeNode node,
-            String prefix,
-            boolean isTail
-    ) {
-        // 打印当前节点
-        System.out.print(prefix);
-        System.out.print(isTail ? "└── " : "├── ");
-        System.out.println(node.segment());
-
-        // 处理子节点
-        for (int i = 0; i < node.children().size(); i++) {
-            boolean lastChild = (i == node.children().size() - 1);
-            String childPrefix = prefix + (isTail ? "    " : "│   ");
-            printTreeRecursive(node.children().get(i), childPrefix, lastChild);
-        }
     }
 }
