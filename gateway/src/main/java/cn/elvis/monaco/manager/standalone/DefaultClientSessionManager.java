@@ -18,7 +18,7 @@ import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
 import cn.elvis.monaco.utils.ULID;
 import io.netty.handler.codec.mqtt.MqttConnectReturnCode;
-import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
 import io.vertx.core.internal.logging.Logger;
@@ -82,7 +82,7 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         if (StringUtil.isNullOrEmpty(endpoint.clientIdentifier())) {
             if (settings.serverAssignedClientIdentifier()) {
                 endpoint.setClientIdentifier(ULID.random());
-                properties.withProperty(MqttPropertyType.ASSIGNED_CLIENT_IDENTIFIER, endpoint.clientIdentifier());
+                properties.withProperty(MqttProperties.ASSIGNED_CLIENT_IDENTIFIER, endpoint.clientIdentifier());
             } else {
                 return ConnectAcknowledge.reject(MqttConnectReturnCode.CONNECTION_REFUSED_IDENTIFIER_REJECTED, properties);
             }
@@ -110,49 +110,49 @@ public final class DefaultClientSessionManager implements ClientSessionManager {
         }
         if (clientSessionStore.total() + 1 <= settings.maximumSessionCount()) {
             int sessionExpiryInterval = Math.min(
-                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.SESSION_EXPIRY_INTERVAL, settings.defaultSessionExpiryInterval()),
+                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.SESSION_EXPIRY_INTERVAL, settings.defaultSessionExpiryInterval()),
                     settings.maxSessionExpiryInterval()
             );
             int receiveMaximum = Math.min(
-                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.RECEIVE_MAXIMUM, settings.defaultReceiveMaximum()),
+                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.RECEIVE_MAXIMUM, settings.defaultReceiveMaximum()),
                     settings.maxReceiveMaximum()
             );
-            int maximumPacketSize = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.MAXIMUM_PACKET_SIZE, 0);
+            int maximumPacketSize = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.MAXIMUM_PACKET_SIZE, 0);
             int topicAliasMaximum = Math.min(
-                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.TOPIC_ALIAS_MAXIMUM, settings.topicAliasMaximum()),
+                    MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.TOPIC_ALIAS_MAXIMUM, settings.topicAliasMaximum()),
                     settings.topicAliasMaximum()
             );
-            int serverKeepalive = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttPropertyType.SERVER_KEEP_ALIVE, 0);
+            int serverKeepalive = MqttPropertiesUtils.intValue(endpoint.connectProperties(), MqttProperties.SERVER_KEEP_ALIVE, 0);
             topicAliasStore.setTopicAliasMaximum(endpoint.clientIdentifier(), topicAliasMaximum);
             properties
-                    .withProperty(MqttPropertyType.SESSION_EXPIRY_INTERVAL, sessionExpiryInterval)
-                    .withProperty(MqttPropertyType.RECEIVE_MAXIMUM, receiveMaximum)
-                    .withProperty(MqttPropertyType.MAXIMUM_QOS, settings.maximumQualityOfService())
-                    .withAvailableOption(MqttPropertyType.RETAIN_AVAILABLE, settings.retainAvailable())
-                    .withProperty(MqttPropertyType.MAXIMUM_PACKET_SIZE, maximumPacketSize)
-                    .withProperty(MqttPropertyType.TOPIC_ALIAS_MAXIMUM, topicAliasMaximum)
-                    .withAvailableOption(MqttPropertyType.WILDCARD_SUBSCRIPTION_AVAILABLE, settings.wildcardSubscriptionAvailable())
-                    .withAvailableOption(MqttPropertyType.SUBSCRIPTION_IDENTIFIER_AVAILABLE, settings.subscriptionIdentifierAvailable())
-                    .withAvailableOption(MqttPropertyType.SHARED_SUBSCRIPTION_AVAILABLE, settings.sharedSubscriptionAvailable())
+                    .withProperty(MqttProperties.SESSION_EXPIRY_INTERVAL, sessionExpiryInterval)
+                    .withProperty(MqttProperties.RECEIVE_MAXIMUM, receiveMaximum)
+                    .withProperty(MqttProperties.MAXIMUM_QOS, settings.maximumQualityOfService())
+                    .withAvailableOption(MqttProperties.RETAIN_AVAILABLE, settings.retainAvailable())
+                    .withProperty(MqttProperties.MAXIMUM_PACKET_SIZE, maximumPacketSize)
+                    .withProperty(MqttProperties.TOPIC_ALIAS_MAXIMUM, topicAliasMaximum)
+                    .withAvailableOption(MqttProperties.WILDCARD_SUBSCRIPTION_AVAILABLE, settings.wildcardSubscriptionAvailable())
+                    .withAvailableOption(MqttProperties.SUBSCRIPTION_IDENTIFIER_AVAILABLE, settings.subscriptionIdentifierAvailable())
+                    .withAvailableOption(MqttProperties.SHARED_SUBSCRIPTION_AVAILABLE, settings.sharedSubscriptionAvailable())
             ;
             // use server keepalive
             if (serverKeepalive > 0) {
                 // store server keep alive
                 serverKeepalive = Math.min(serverKeepalive, settings.serverKeepaliveIntervalMaximum());
-                properties.withProperty(MqttPropertyType.SERVER_KEEP_ALIVE, serverKeepalive);
+                properties.withProperty(MqttProperties.SERVER_KEEP_ALIVE, serverKeepalive);
             } else {
                 // store client keep alive
                 serverKeepalive = endpoint.keepAliveTimeSeconds();
             }
-            boolean requestResponseInformation = MqttPropertiesUtils.boolValue(endpoint.connectProperties(), MqttPropertyType.REQUEST_RESPONSE_INFORMATION, false);
-            properties.withAvailableOption(MqttPropertyType.RESPONSE_INFORMATION, requestResponseInformation);
+            boolean requestResponseInformation = MqttPropertiesUtils.boolValue(endpoint.connectProperties(), MqttProperties.REQUEST_RESPONSE_INFORMATION, false);
+            properties.withAvailableOption(MqttProperties.RESPONSE_INFORMATION, requestResponseInformation);
             EnhancedAuthenticator.AuthenticationStage authenticationStage = EnhancedAuthenticator.AuthenticationStage
                     .init(endpoint.clientIdentifier(), endpoint.connectProperties());
             authenticationStage = Authentications.enhancedAuthenticator()
                     .authenticate(authenticationStage.clientId(), authenticationStage.method(), authenticationStage.data());
             boolean authorized = authenticationStage.stage() == EnhancedAuthenticator.Stage.SUCCESS;
-            properties.withProperty(MqttPropertyType.AUTHENTICATION_METHOD, authenticationStage.method())
-                    .withProperty(MqttPropertyType.AUTHENTICATION_DATA, authenticationStage.data());
+            properties.withProperty(MqttProperties.AUTHENTICATION_METHOD, authenticationStage.method())
+                    .withProperty(MqttProperties.AUTHENTICATION_DATA, authenticationStage.data());
             ClientSession session = new DefaultClientSession(vertx,
                     endpoint,
                     sessionExpiryInterval,

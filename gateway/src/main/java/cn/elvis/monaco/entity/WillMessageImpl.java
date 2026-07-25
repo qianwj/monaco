@@ -23,7 +23,7 @@ public final class WillMessageImpl implements WillMessage {
         this.body = PublishMessage.of(-1, senderId, will);
         this.delayInterval = Optional.ofNullable(
                         will.getWillProperties()
-                                .getProperty(MqttProperties.MqttPropertyType.WILL_DELAY_INTERVAL.value())
+                                .getProperty(MqttProperties.WILL_DELAY_INTERVAL)
                 ).map(MqttProperties.MqttProperty::value)
                 .map(v -> Duration.ofMillis((int) v))
                 .orElse(Duration.ZERO);

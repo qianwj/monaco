@@ -31,32 +31,27 @@ public final class MqttPropertiesBuilder {
         return new MqttPropertiesBuilder(properties);
     }
 
-    public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, String value) {
-        if (Objects.nonNull(propertyType) && Objects.nonNull(value) && !value.isBlank()) {
-            properties.add(new MqttProperties.StringProperty(propertyType.value(), value));
+    public MqttPropertiesBuilder withProperty(int propertyType, String value) {
+        if (Objects.nonNull(value) && !value.isBlank()) {
+            properties.add(new MqttProperties.StringProperty(propertyType, value));
         }
         return this;
     }
 
-    public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, int value) {
-        if (Objects.nonNull(propertyType)) {
-            properties.add(new MqttProperties.IntegerProperty(propertyType.value(), value));
+    public MqttPropertiesBuilder withProperty(int propertyType, int value) {
+        properties.add(new MqttProperties.IntegerProperty(propertyType, value));
+        return this;
+    }
+
+    public MqttPropertiesBuilder withProperty(int propertyType, Buffer value) {
+        if (Objects.nonNull(value)) {
+            properties.add(new MqttProperties.BinaryProperty(propertyType, value.getBytes()));
         }
         return this;
     }
 
-    public MqttPropertiesBuilder withProperty(MqttProperties.MqttPropertyType propertyType, Buffer value) {
-        if (Objects.nonNull(propertyType) && Objects.nonNull(value)) {
-            properties.add(new MqttProperties.BinaryProperty(propertyType.value(), value.getBytes()));
-        }
-        return this;
-    }
-
-    public MqttPropertiesBuilder withAvailableOption(MqttProperties.MqttPropertyType propertyType, boolean value) {
-        if (Objects.isNull(propertyType)) {
-            return this;
-        }
-        var property = new ByteProperty(propertyType.value(), value ? (byte) 1 : (byte) 0);
+    public MqttPropertiesBuilder withAvailableOption(int propertyType, boolean value) {
+        var property = new ByteProperty(propertyType, value ? (byte) 1 : (byte) 0);
         properties.add(property);
         return this;
     }

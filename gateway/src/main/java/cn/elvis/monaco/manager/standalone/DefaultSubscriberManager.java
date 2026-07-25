@@ -60,7 +60,7 @@ public final class DefaultSubscriberManager implements SubscriberManager {
 
     @Override
     public SubscribeAcknowledge subscribe(MqttEndpoint endpoint, MqttSubscribeMessage packet) {
-        int subscribeId = MqttPropertiesUtils.intValue(packet.properties(), MqttProperties.MqttPropertyType.SUBSCRIPTION_IDENTIFIER, 0);
+        int subscribeId = MqttPropertiesUtils.intValue(packet.properties(), MqttProperties.SUBSCRIPTION_IDENTIFIER, 0);
         if (subscribeId > 0) {
             if (!settings.subscriptionIdentifierAvailable()) {
                 List<MqttSubAckReasonCode> reasonCodes = packet.topicSubscriptions()

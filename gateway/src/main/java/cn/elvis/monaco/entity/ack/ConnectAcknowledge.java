@@ -35,8 +35,8 @@ public record ConnectAcknowledge(
             MqttAuthenticationExchangeMessage message = MqttAuthenticationExchangeMessage.create(
                     MqttAuthenticateReasonCode.valueOf(authorized.stage().name()),
                     MqttPropertiesBuilder.create()
-                            .withProperty(MqttProperties.MqttPropertyType.AUTHENTICATION_DATA, authorized.data())
-                            .withProperty(MqttProperties.MqttPropertyType.AUTHENTICATION_METHOD, authorized.method())
+                            .withProperty(MqttProperties.AUTHENTICATION_DATA, authorized.data())
+                            .withProperty(MqttProperties.AUTHENTICATION_METHOD, authorized.method())
                             .build()
             );
             endpoint.authenticationExchange(message);

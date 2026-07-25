@@ -30,6 +30,8 @@ dependencies {
     implementation(libs.vertx.cluster)
     implementation(libs.vertx.metrics)
 
+    implementation("org.postgresql:postgresql:42.7.3")
+
     implementation("org.rocksdb:rocksdbjni:10.2.1")
     // https://mvnrepository.com/artifact/org.eclipse.collections/eclipse-collections
     implementation("org.eclipse.collections:eclipse-collections:13.0.0")
@@ -39,7 +41,7 @@ dependencies {
     implementation(libs.log4j.api)
 
     implementation(project(":common"))
-    implementation(project(":extension-core"))
+
 
     implementation(libs.log4j.core)
 

@@ -13,7 +13,7 @@ import cn.elvis.monaco.store.TopicAliasStore;
 import cn.elvis.monaco.topics.Topics;
 import cn.elvis.monaco.utils.MqttPropertiesBuilder;
 import cn.elvis.monaco.utils.MqttPropertiesUtils;
-import io.netty.handler.codec.mqtt.MqttProperties.MqttPropertyType;
+import io.netty.handler.codec.mqtt.MqttProperties;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.util.internal.StringUtil;
 import io.vertx.core.Vertx;
@@ -62,11 +62,11 @@ public final class DefaultPublisherManager implements PublisherManager {
     public PublishExchangeAcknowledge publish(MqttEndpoint endpoint, MqttPublishMessage packet) {
         String clientId = endpoint.clientIdentifier();
         MqttPropertiesBuilder properties = MqttPropertiesBuilder.from(packet.properties());
-        int topicAlias = MqttPropertiesUtils.intValue(packet.properties(), MqttPropertyType.TOPIC_ALIAS, 0);
+        int topicAlias = MqttPropertiesUtils.intValue(packet.properties(), MqttProperties.TOPIC_ALIAS, 0);
         if (topicAlias > topicAliasStore.topicAliasMaximum(clientId)) {
             return new PublishAcknowledge(packet.messageId(), ReasonCode.IMPLEMENTATION_SPECIFIC_ERROR, properties);
         }
-        int subscribeId = MqttPropertiesUtils.intValue(packet.properties(), MqttPropertyType.SUBSCRIPTION_IDENTIFIER, 0);
+        int subscribeId = MqttPropertiesUtils.intValue(packet.properties(), MqttProperties.SUBSCRIPTION_IDENTIFIER, 0);
         if (subscribeId > 0 && !settings.subscriptionIdentifierAvailable()) {
             return new PublishAcknowledge(packet.messageId(), ReasonCode.IMPLEMENTATION_SPECIFIC_ERROR, properties);
         }

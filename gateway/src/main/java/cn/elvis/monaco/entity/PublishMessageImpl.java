@@ -119,7 +119,7 @@ public final class PublishMessageImpl implements PublishMessage {
 
     private Instant expiryTime(MqttProperties properties) {
         return Optional.ofNullable(
-                        properties.getProperty(MqttProperties.MqttPropertyType.PUBLICATION_EXPIRY_INTERVAL.value())
+                        properties.getProperty(MqttProperties.PUBLICATION_EXPIRY_INTERVAL)
                 )
                 .map(MqttProperties.MqttProperty::value)
                 .map(v -> Instant.now().plusMillis((int) v))

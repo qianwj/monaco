@@ -11,8 +11,8 @@ public interface EnhancedAuthenticator {
     record AuthenticationStage(String clientId, String method, Buffer data, Stage stage) {
 
         public static AuthenticationStage init(String clientId, MqttProperties properties) {
-            String method = MqttPropertiesUtils.<String>getValue(properties, MqttProperties.MqttPropertyType.AUTHENTICATION_METHOD).orElse("");
-            Buffer data = MqttPropertiesUtils.binaryValue(properties, MqttProperties.MqttPropertyType.AUTHENTICATION_DATA, null);
+            String method = MqttPropertiesUtils.<String>getValue(properties, MqttProperties.AUTHENTICATION_METHOD).orElse("");
+            Buffer data = MqttPropertiesUtils.binaryValue(properties, MqttProperties.AUTHENTICATION_DATA, null);
             return new AuthenticationStage(clientId, method, data, Stage.INIT);
         }
     }
