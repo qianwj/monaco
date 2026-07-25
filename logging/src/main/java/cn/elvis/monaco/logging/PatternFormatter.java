@@ -1,4 +1,18 @@
-package cn.elvis.monaco.logging; /**
+package cn.elvis.monaco.logging;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.util.Date;
+import java.util.Objects;
+import java.util.logging.Formatter;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
  * 可编程“样式处理器”（Formatter）
  * 支持的占位符：
  *   %d{pattern}  时间（SimpleDateFormat），默认 HH:mm:ss.SSS
@@ -17,6 +31,7 @@ class PatternFormatter extends Formatter {
     private final boolean useAnsi;
 
     private static final Pattern DATE_TOKEN = Pattern.compile("%d\\{([^}]*)}"); // %d{...}
+    private static final Pattern MDC_TOKEN = Pattern.compile("%X\\{([^}]*)}");  // %X{...}
 
     PatternFormatter(String pattern, boolean useAnsi) {
         this.pattern = Objects.requireNonNullElse(pattern, "%d{HH:mm:ss.SSS} [%level] %logger - %msg%n");
@@ -29,7 +44,7 @@ class PatternFormatter extends Formatter {
 
         // 处理 %d{...}
         Matcher m = DATE_TOKEN.matcher(s);
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (m.find()) {
             String datePat = m.group(1);
             String repl = new SimpleDateFormat(
@@ -61,26 +76,37 @@ class PatternFormatter extends Formatter {
              .replace("%epoch", String.valueOf(r.getMillis()))
              .replace("%instant", Instant.ofEpochMilli(r.getMillis()).toString());
 
+        // 处理 %X{key} — MDC 上下文
+        Matcher mdcMatcher = MDC_TOKEN.matcher(s);
+        StringBuilder mdcSb = new StringBuilder();
+        while (mdcMatcher.find()) {
+            String key = mdcMatcher.group(1);
+            String val = MDC.getContextMap().getOrDefault(key, "");
+            mdcMatcher.appendReplacement(mdcSb, Matcher.quoteReplacement(val));
+        }
+        mdcMatcher.appendTail(mdcSb);
+        s = mdcSb.toString();
+
         // ERROR 级别自动追加 stacktrace
-        if (r.getLevel().intValue() >= CustomLevels.ERROR.intValue() && r.getThrown() != null) {
+        if (r.getLevel().intValue() >= LogLevel.ERROR.intValue() && r.getThrown() != null) {
             StringWriter sw = new StringWriter();
             r.getThrown().printStackTrace(new PrintWriter(sw));
             s += System.lineSeparator() + sw;
         }
 
         if (useAnsi) {
-            String color = Ansi.colorFor(r.getLevel());
-            return color + s + Ansi.RESET;
+            String color = ANSI.colorFor(r.getLevel());
+            return color + s + ANSI.RESET;
         }
         return s;
     }
 
     private static String mapLevelName(Level level) {
-        if (level == CustomLevels.TRACE) return "TRACE";
-        if (level == CustomLevels.DEBUG) return "DEBUG";
+        if (level == LogLevel.TRACE) return "TRACE";
+        if (level == LogLevel.DEBUG) return "DEBUG";
         if (level == Level.INFO)         return "INFO";
         if (level == Level.WARNING)      return "WARN";
-        if (level == Level.SEVERE)       return "ERROR";
+        if (level == LogLevel.ERROR)       return "ERROR";
         // 兼容 FINE/FINEST 映射
         int v = level.intValue();
         if (v <= 350) return "TRACE";
