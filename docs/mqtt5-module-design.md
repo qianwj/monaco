@@ -28,9 +28,10 @@ include(
     "store-memory",
     "store-rocksdb",
     "security-default",
-    "plugin-api",
-    "plugin-runtime",
-    "plugin-remote-grpc",
+    "plugin",
+    "plugin:api",
+    "plugin:runtime",
+    "plugin:remote",
     "observability-micrometer",
     "broker",
     "testkit"
@@ -82,11 +83,11 @@ dependencies {
 | store-memory | java-library | core | Broker 业务 |
 | store-rocksdb | java-library | core、rocksdbjni | 网络、协议 |
 | security-default | java-library | core | Endpoint、数据库 |
-| plugin-api | java-library | protocol、reactor-core | core 内部状态、Endpoint、Store |
-| plugin-runtime | java-library | core、plugin-api | MQTT 状态机 |
-| plugin-remote-grpc | java-library | plugin-runtime、plugin-api、gRPC | MQTT 状态机、Store |
+| plugin:api | java-library | protocol、reactor-core | core 内部状态、Endpoint、Store |
+| plugin:runtime | java-library | core、plugin:api | MQTT 状态机 |
+| plugin:remote | java-library | plugin:runtime、plugin:api、gRPC | MQTT 状态机、Store |
 | observability-micrometer | java-library | core、micrometer | 业务状态变更 |
-| broker | application | core + plugin-runtime + 所有适配器 | MQTT 业务规则 |
+| broker | application | core + plugin:runtime + 所有适配器 | MQTT 业务规则 |
 | testkit | java-library (test-fixtures) | protocol、core、store-memory | 生产代码 |
 
 所有模块 Java toolchain 设置为 25。
@@ -438,7 +439,11 @@ RocksDB 调用运行在 Schedulers.boundedElastic()，队列满时返回 Server 
 
 ---
 
-### 2.7 plugin-api 模块
+### 2.7 plugin 模块
+
+plugin 为聚合模块，包含三个子模块：`plugin:api`、`plugin:runtime`、`plugin:remote`。
+
+#### 2.7.1 plugin:api 子模块
 
 **基础包：** `cn.elvis.monaco.plugin.api`
 
@@ -451,11 +456,11 @@ RocksDB 调用运行在 Schedulers.boundedElastic()，队列满时返回 Server 
 - Event DTO（连接、断线、发布、订阅事件通知）
 - 插件 Manifest 和 API 版本声明
 
-plugin-api 依赖 protocol（MQTT 值对象）和 reactor-core（Mono/Flux），不依赖 core 内部。
+plugin:api 依赖 protocol（MQTT 值对象）和 reactor-core（Mono/Flux），不依赖 core 内部。
 
 ---
 
-### 2.8 plugin-runtime 模块
+#### 2.7.2 plugin:runtime 子模块
 
 **基础包：** `cn.elvis.monaco.plugin.runtime`
 
@@ -482,11 +487,11 @@ Hook 执行时机：
 - 修改结果必须重新经过协议校验和配额检查
 - Domain Event 在事务提交后异步发送，失败不改变 ACK、Store 或 Delivery 状态
 
-core 不依赖 plugin-api。plugin-runtime 同时依赖 core 和 plugin-api。
+core 不依赖 plugin:api。plugin:runtime 同时依赖 core 和 plugin:api。
 
 ---
 
-### 2.9 plugin-remote-grpc 模块
+#### 2.7.3 plugin:remote 子模块
 
 **基础包：** `cn.elvis.monaco.plugin.remote.grpc`
 
@@ -495,15 +500,15 @@ core 不依赖 plugin-api。plugin-runtime 同时依赖 core 和 plugin-api。
 | 类 | 职责 |
 |---|---|
 | `GrpcPluginSource` | 远程插件连接管理 |
-| `GrpcHookProxy` | 将 gRPC 调用适配为 plugin-api Hook 接口 |
+| `GrpcHookProxy` | 将 gRPC 调用适配为 plugin:api Hook 接口 |
 | `GrpcEventStream` | 事件流推送到远程进程 |
 | `RemoteHealthCheck` | 远程插件健康检查 |
 
-依赖 plugin-runtime + plugin-api + gRPC。默认使用 gRPC 强类型契约；只有持续双向事件流证明需要 Request N 和 Resume 时再增加 RSocket 适配器。
+依赖 plugin:runtime + plugin:api + gRPC。默认使用 gRPC 强类型契约；只有持续双向事件流证明需要 Request N 和 Resume 时再增加 RSocket 适配器。
 
 ---
 
-### 2.10 observability-micrometer 模块
+### 2.8 observability-micrometer 模块
 
 **基础包：** `cn.elvis.monaco.adapter.observability`
 
@@ -540,7 +545,7 @@ core 不依赖 plugin-api。plugin-runtime 同时依赖 core 和 plugin-api。
 3. 重建主题索引和定时器
 4. 创建 Authenticator、Authorizer
 5. 创建 BrokerEngineImpl（注入所有端口）
-6. 启动 plugin-runtime
+6. 启动 plugin:runtime
 7. 创建 ReactorTransport → bind TCP/TLS/WS
 8. 健康状态 → READY
 ```
@@ -631,8 +636,8 @@ core 不依赖 plugin-api。plugin-runtime 同时依赖 core 和 plugin-api。
 | P3-4 | Subscription Identifier | 多 ID 聚合投递 | P1-4 |
 | P3-5 | Enhanced AUTH | 增强认证状态机 | P0-7 |
 | P3-6 | 共享订阅 | $share/{group}/{filter}，round-robin | P1-4 |
-| P3-7 | plugin-api + plugin-runtime | 插件框架完整实现，Hook Chain、ClassLoader 隔离 | P0-4 |
-| P3-8 | plugin-remote-grpc | gRPC 远程插件支持 | P3-7 |
+| P3-7 | plugin:api + plugin:runtime | 插件框架完整实现，Hook Chain、ClassLoader 隔离 | P0-4 |
+| P3-8 | plugin:remote | gRPC 远程插件支持 | P3-7 |
 | P3-9 | observability-micrometer | BrokerTelemetry 完整实现 | P0-4 |
 
 ### 3.5 P4：生产化
