@@ -5,26 +5,28 @@
 > 更新日期：2026-07-25
 >
 > 架构形态：模块化单体、端口与适配器、单节点优先
+>
+> 演进说明：本文的 `core`、`transport-reactor` 是单机迁移阶段名称；进入集群 C0 前按 [集群模块详细设计](mqtt5-cluster-module-design.md) 拆为 `core-domain`、`runtime-reactor` 和 `transport-reactor-netty`。
 
 ## 1. 架构目标
 
 Monaco 需要先成为协议正确、可恢复、可测试的 MQTT 5.0 Broker，再考虑集群和扩展生态。全新设计遵循以下原则：
 
-1. MQTT 协议状态机不能依赖 Vert.x、Netty、RocksDB 或配置框架。
+1. MQTT 协议状态机不能依赖 Vert.x、Reactor、Netty、RocksDB 或配置框架。
 2. 网络连接与持久会话分离，Packet ID 只在单个连接方向内有意义。
 3. 影响 QoS 的状态变更必须先原子持久化，再发送 ACK 或网络报文。
 4. 同一 clientId 的命令串行执行，不同会话并行；核心路径禁止阻塞 Event Loop。
-5. 核心正确性使用类型化调用，不依赖字符串 Channel 和无类型 EventBus 消息。
+5. 核心正确性使用类型化调用，不依赖字符串 Channel 和无类型 EventBus 或消息总线。
 6. Gradle 模块代表代码所有权和依赖边界，不代表独立进程或微服务。
 
-第一版只交付单节点。集群、桥接和远程插件必须通过端口接入，但不能污染单节点状态机。
+第一版只交付单节点。集群、桥接和远程插件必须通过端口接入，但不能污染单节点状态机。后续单机/集群双模式、组件关系与所有权见 [集群架构设计](mqtt5-cluster-architecture.md)，通信、存储和部署选型见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)，模块与任务拆分见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
 
 ## 2. 总体架构
 
     MQTT Client
          |
          v
-    transport-vertx
+    transport-reactor
       decode / encode
          |
          v
@@ -53,12 +55,12 @@ broker 是唯一 Composition Root，负责选择适配器、注入依赖和控�
 | 模块 | 核心职责 | 允许依赖 | 禁止包含 |
 | --- | --- | --- | --- |
 | protocol | MQTT 5 值对象、报文模型、属性规则、Reason Code、主题匹配、纯状态机 | Java 标准库 | Vert.x、Netty、Store、线程、网络 |
-| core | Broker 用例、领域状态、入站端口、出站端口、并发协调 | protocol、vertx-core | vertx-mqtt、Netty、具体数据库、配置文件 |
-| transport-vertx | TCP/TLS/WS 监听，Vert.x/Netty 报文与 protocol 模型互转 | core、protocol、Vert.x MQTT | 会话持久化、路由业务、ACL 规则 |
+| core | Broker 用例、领域状态、入站端口、出站端口、并发协调 | protocol、reactor-core | vertx-mqtt、Netty、具体数据库、配置文件 |
+| transport-reactor | TCP/TLS/WS 监听，Reactor Netty + Netty MQTT 编解码与 protocol 模型互转 | core、protocol、Reactor Netty、Netty MQTT codec | 会话持久化、路由业务、ACL 规则 |
 | store-memory | core 存储端口的内存实现 | core | Broker 业务判断 |
 | store-rocksdb | core 存储端口的 RocksDB 实现、编码、迁移和恢复 | core、RocksDB | 网络和协议编排 |
 | security-default | 匿名、用户名密码、文件 ACL 等默认安全实现 | core | Endpoint、数据库细节 |
-| plugin-api | 面向第三方的稳定生命周期、Hook、Decision 和 Event DTO | protocol、vertx-core | core 内部状态、Endpoint、Store |
+| plugin-api | 面向第三方的稳定生命周期、Hook、Decision 和 Event DTO | protocol、reactor-core | core 内部状态、Endpoint、Store |
 | plugin-runtime | 插件发现、ClassLoader、排序、生命周期、超时和 Hook Chain | core、plugin-api | MQTT 状态机 |
 | plugin-remote-grpc | 独立进程插件的 gRPC 调用、事件流和健康检查 | plugin-runtime、plugin-api、gRPC | MQTT 状态机、Store |
 | observability-micrometer | 指标端口实现、日志上下文、健康检查 | core、Micrometer | 业务状态变更 |
@@ -70,7 +72,7 @@ broker 是唯一 Composition Root，负责选择适配器、注入依赖和控�
     broker/
     protocol/
     core/
-    transport-vertx/
+    transport-reactor/
     store-memory/
     store-rocksdb/
     security-default/
@@ -92,7 +94,7 @@ logging 是独立的轻量级日志库，基于 java.util.logging 实现，作�
         "logging",
         "protocol",
         "core",
-        "transport-vertx",
+        "transport-reactor",
         "store-memory",
         "store-rocksdb",
         "security-default",
@@ -111,8 +113,8 @@ logging 是独立的轻量级日志库，基于 java.util.logging 实现，作�
 以下箭头表示“左侧模块依赖右侧模块”：
 
     core ---------------------> protocol
-    plugin-api ---------------> protocol + vertx-core
-    transport-vertx ----------> core
+    plugin-api ---------------> protocol + reactor-core
+    transport-reactor ---------> core
     store-memory -------------> core
     store-rocksdb ------------> core
     security-default ---------> core
@@ -122,7 +124,7 @@ logging 是独立的轻量级日志库，基于 java.util.logging 实现，作�
     broker -------------------> core + plugin-runtime + selected adapters
     testkit ------------------> protocol + core + store-memory
 
-broker 位于依赖图最外层。任何适配器之间不得直接依赖，例如 transport-vertx 不能调用 store-rocksdb，security-default 不能访问 Vert.x Endpoint。testkit 只能作为 test fixture 或 testImplementation 依赖。
+broker 位于依赖图最外层。任何适配器之间不得直接依赖，例如 transport-reactor 不能调用 store-rocksdb，security-default 不能访问 Netty Channel。testkit 只能作为 test fixture 或 testImplementation 依赖。
 
 ### 3.3 包与公共 API
 
@@ -130,7 +132,7 @@ broker 位于依赖图最外层。任何适配器之间不得直接依赖，例�
 | --- | --- | --- |
 | protocol | cn.elvis.monaco.protocol | packet、property、topic、qos、reason |
 | core | cn.elvis.monaco.core | port.in、port.out、model |
-| transport-vertx | cn.elvis.monaco.adapter.transport.vertx | VertxTransportFactory、TransportConfig |
+| transport-reactor | cn.elvis.monaco.adapter.transport.reactor | ReactorTransportFactory、TransportConfig |
 | store-memory | cn.elvis.monaco.adapter.store.memory | MemoryBrokerStore |
 | store-rocksdb | cn.elvis.monaco.adapter.store.rocksdb | RocksBrokerStore、RocksStoreConfig |
 | security-default | cn.elvis.monaco.adapter.security | DefaultSecurityFactory |
@@ -151,7 +153,7 @@ build-logic 作为 Gradle included build 存放统一的 Java 21、JUnit、编�
 - 库模块使用 java-library，只有稳定公共类型使用 api，其余依赖使用 implementation。
 - broker 使用 application 插件，mainClass 固定为 cn.elvis.monaco.broker.MonacoApplication。
 - testkit 通过 java-test-fixtures 暴露测试能力，不进入生产 runtimeClasspath。
-- CI 增加 dependencyBoundaries 任务：protocol 不允许 Vert.x；core 只允许 vertx-core，不允许 vertx-mqtt、Netty、RocksDB 或 Micrometer。
+- CI 增加 dependencyBoundaries 任务：protocol 不允许 Reactor 和 Netty；core 只允许 reactor-core，不允许 Netty、RocksDB 或 Micrometer。
 - 单元测试、组件测试和端到端测试使用独立 source set，默认 check 至少运行单元和组件测试。
 - gradle-wrapper.jar 必须提交，确保全新 checkout 可直接执行构建。
 
@@ -185,15 +187,15 @@ core 是 Broker 的唯一业务内核。它包含领域模型、用例实现和�
 
 ### 5.1 入站端口
 
-transport-vertx 只允许通过 BrokerEngine 进入核心：
+transport-reactor 只允许通过 BrokerEngine 进入核心：
 
     interface BrokerEngine {
-        Future<Void> opened(ConnectionHandle connection);
-        Future<Void> received(ConnectionId id, ClientPacket packet);
-        Future<Void> closed(ConnectionId id, DisconnectCause cause);
+        Mono<Void> opened(ConnectionHandle connection);
+        Mono<Void> received(ConnectionId id, ClientPacket packet);
+        Mono<Void> closed(ConnectionId id, DisconnectCause cause);
     }
 
-opened 只表示物理连接建立。CONNECT 成功前不创建持久会话。received 返回的 Future 完成表示该报文产生的状态变更和必要发送动作已经处理完成。
+opened 只表示物理连接建立。CONNECT 成功前不创建持久会话。received 返回的 Mono 完成表示该报文产生的状态变更和必要发送动作已经处理完成。
 
 ### 5.2 出站端口
 
@@ -210,19 +212,19 @@ core 定义、适配器实现：
 
 DomainEventSink 只发布事务提交后的通知。发布失败不得回滚已经完成的 MQTT 状态，也不得参与消息投递正确性。
 
-BrokerScheduler 的 Vert.x 实现由 transport-vertx 提供并由 broker 注入；core 只保存 timer key，不持有 Vert.x timer id。
+BrokerScheduler 的实现由 transport-reactor 提供并由 broker 注入；core 只保存 timer key，不持有 Vert.x timer id。
 
 ### 5.3 异步模型
 
-core 和全部运行时端口统一使用 io.vertx.core.Future，不再引入 CompletionStage：
+core 和全部运行时端口统一使用 Project Reactor 的 Mono<T> 和 Flux<T>，不再引入 CompletionStage：
 
-- 公共端口返回 Future，不把 Promise 暴露给调用方。
-- 使用 compose、map、recover、eventually 和 Future.all 组合流程。
-- transport-vertx 调用 core 时保留当前 Vert.x Context，不做 Future/CompletionStage 往返转换。
-- RocksDB、文件认证和远程扩展等阻塞操作通过 executeBlocking 或有界 WorkerExecutor 执行，再返回 Future。
-- 失败通过 Future 传播到 ProtocolErrorMapper 或生命周期管理器，禁止 join、get、await 和线程阻塞。
+- 公共端口返回 Mono/Flux，不把 Promise 暴露给调用方。
+- 使用 flatMap、map、onErrorResume、doFinally 和 Mono.zip 组合流程。
+- transport-reactor 调用 core 时不做 Mono/CompletionStage 往返转换。
+- RocksDB、文件认证和远程扩展等阻塞操作通过 Schedulers.boundedElastic() 执行，再返回 Mono。
+- 失败通过 Mono.error 传播到 ProtocolErrorMapper 或生命周期管理器，禁止 block、join 和线程阻塞。
 
-protocol 中的值对象、校验器和状态机仍是同步纯函数，因此 protocol 不依赖 vertx-core。
+protocol 中的值对象、校验器和状态机仍是同步纯函数，因此 protocol 不依赖 reactor-core。
 
 ### 5.4 领域服务
 
@@ -258,7 +260,7 @@ ConnectionState 不能持久化，Topic Alias 在每次网络连接结束时清�
 - Session Mailbox 以 clientId 为键，保证连接接管、会话恢复、订阅和 Inflight 操作串行。
 - Routing Coordinator 串行化订阅索引变更和匹配快照生成；投递到不同 Session Mailbox 后可并行。
 
-Mailbox 只串联 Vert.x Future，不占用一个线程持续等待。一个 Mailbox 中不得同步等待另一个 Mailbox，跨会话工作拆成后续命令，避免死锁。
+Mailbox 只串联 Mono，不占用一个线程持续等待。一个 Mailbox 中不得同步等待另一个 Mailbox，跨会话工作拆成后续命令，避免死锁。
 
 ### 6.2 状态提交规则
 
@@ -275,9 +277,9 @@ QoS 0 允许不落盘；QoS 1/2、持久会话、Retain 和 Will 必须遵守该
 ### 6.3 Store 事务边界
 
     interface BrokerStore {
-        <T> Future<T> transact(StoreOperation<T> operation);
-        Future<RecoverySnapshot> recover();
-        Future<Void> close();
+        <T> Mono<T> transact(StoreOperation<T> operation);
+        Mono<RecoverySnapshot> recover();
+        Mono<Void> close();
     }
 
 StoreOperation 在一个事务视图中读写 Session、Subscription、Message、Delivery、Inflight、Retain 和 Will。内存实现使用锁和不可变快照；RocksDB 使用 WriteBatch。事务回调不能泄漏到完成后的异步代码。
@@ -298,7 +300,7 @@ StoreOperation 在一个事务视图中读写 Session、Subscription、Message�
 
 ### 7.2 CONNECT
 
-    Vert.x CONNECT
+    MQTT CONNECT
       -> transport maps ConnectPacket
       -> ConnectionService validates properties
       -> Authenticator
@@ -341,15 +343,15 @@ transport 将 Normal、Protocol Error、Keep Alive Timeout、Network Error 和 S
 
 ## 8. 传输适配器
 
-transport-vertx 使用成熟的 Vert.x MQTT/Netty 编解码器，不自行解析 MQTT 二进制帧。它只负责：
+transport-reactor 使用 Reactor Netty 监听 TCP/TLS/WS，结合 Netty MQTT 编解码器处理协议帧。它只负责：
 
 - 监听 TCP、TLS 和 WebSocket。
-- 将 MqttEndpoint 事件映射为 protocol 报文。
-- 实现 ConnectionSink，将 ServerPacket 编码为 Vert.x 调用。
-- 管理 ConnectionId 到 Endpoint 的瞬时注册表。
+- 使用 Netty MQTT codec 解码报文，映射为 protocol 模型。
+- 实现 ConnectionSink，将 ServerPacket 编码并写入 Netty Channel。
+- 管理 ConnectionId 到 Channel 的瞬时注册表。
 - 将 codec、socket 和 TLS 错误转换为 DisconnectCause。
 
-所有 Handler 在注册完毕后才接受 CONNECT。Transport.start 返回 Future，端口绑定成功前 broker 不得进入 READY。
+所有 Handler 在注册完毕后才接受 CONNECT。Transport.start 返回 Mono，端口绑定成功前 broker 不得进入 READY。
 
 ## 9. 存储设计
 
@@ -418,7 +420,7 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 | protocol | 属性矩阵、主题规则、Reason Code、状态机全部转换 |
 | core | 用例行为、事务顺序、Mailbox 并发、断线恢复 |
 | store-* | 同一套契约、原子性、重启恢复、schema 迁移 |
-| transport-vertx | 报文映射、启动失败传播、TCP/TLS/WS |
+| transport-reactor | 报文映射、启动失败传播、TCP/TLS/WS |
 | broker | 配置、装配、生命周期和健康状态 |
 | end-to-end | Paho/HiveMQ/Mosquitto 的 MQTT 5 互操作 |
 
@@ -432,8 +434,8 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 
 | 图中组件 | 决策 | 新架构归属 |
 | --- | --- | --- |
-| TCP Transport | 保留能力，重写适配器 | transport-vertx |
-| WebSocket Transport | 保留能力，和 TCP 复用同一 BrokerEngine | transport-vertx |
+| TCP Transport | 保留能力，重写适配器 | transport-reactor |
+| WebSocket Transport | 保留能力，和 TCP 复用同一 BrokerEngine | transport-reactor |
 | Default/Environment/System Properties/File Settings | 保留配置来源，删除多层 Delegate 对象链 | broker 中的 BrokerConfigLoader |
 | Client Session Manager | 拆分连接态和持久会话 | ConnectionService、SessionService |
 | Publisher Manager | 拆分入站发布与目标投递 | PublishService、DeliveryService |
@@ -486,7 +488,7 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 | --- | --- |
 | gateway topics、ACK、properties | 经规范测试后迁入 protocol |
 | gateway session、manager | 按用例重写到 core，不直接复制 |
-| gateway transport | 重写为 transport-vertx 适配器 |
+| gateway transport | 重写为 transport-reactor 适配器 |
 | gateway memory store | 按 BrokerStoreContract 重写到 store-memory |
 | common authentication | 收敛为 core 端口和 security-default |
 | logging | 迁移期保留，作为 Log4j2 的轻量替代 | 可选依赖 logging 替代 Log4j2 |
@@ -496,7 +498,7 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 
 1. 保持旧模块可编译，创建 protocol、core 和 store-memory。
 2. 用纯单元测试完成 CONNECT、主题、属性与 QoS 状态机。
-3. 创建 transport-vertx 和 broker，打通内存版端到端测试。
+3. 创建 transport-reactor 和 broker，打通内存版端到端测试。
 4. 完成持久会话、QoS 2、Retain、Will 后接入 RocksDB。
 5. 达到能力矩阵后删除旧 gateway/common 实现。logging 作为独立日志库保留。
 
@@ -505,10 +507,10 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 ## 15. 架构验收标准
 
 1. Gradle 依赖图符合本文方向，不存在循环依赖。
-2. protocol 不依赖 Vert.x；core 仅依赖 vertx-core，不出现 vertx-mqtt、Netty、RocksDB 或 Micrometer。
+2. protocol 不依赖 Reactor；core 仅依赖 reactor-core，不出现 vertx-mqtt、Netty、RocksDB 或 Micrometer。
 3. 使用 store-memory 可运行全部协议组件测试，替换 store-rocksdb 无需修改 core。
 4. TCP 与 WebSocket 使用同一套 BrokerEngine 和测试场景。
-5. Broker 启动、停止和监听失败通过 Vert.x Future 准确传播。
+5. Broker 启动、停止和监听失败通过 Mono 准确传播。
 6. 任意 QoS 1/2 中间状态重启后，Broker 能从 Store 恢复。
 7. 删除 EventBus 后不影响核心消息投递；事件系统只服务扩展和观测。
 

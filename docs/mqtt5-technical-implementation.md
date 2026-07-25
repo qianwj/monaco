@@ -12,13 +12,13 @@
 
 本项目目标是实现一个可部署、可验证的单节点 MQTT 5.0 Broker，支持 TCP、TLS 和 WebSocket 接入，并完整处理连接、会话、发布订阅、QoS、保留消息、遗嘱、认证授权及 MQTT 5 属性。
 
-第一阶段不实现集群、桥接和跨节点共享订阅。这些能力必须通过端口预留扩展点，但不得增加单节点协议闭环的复杂度。现有 gateway 仅作为行为与测试参考；新实现按 [MQTT 5.0 架构设计](mqtt5-architecture.md) 旁路构建，完成能力迁移后删除旧实现。
+第一阶段不实现集群、桥接和跨节点共享订阅。这些能力必须通过端口预留扩展点，但不得增加单节点协议闭环的复杂度。集群通信与部署方案见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)。现有 gateway 仅作为行为与测试参考；新实现按 [MQTT 5.0 架构设计](mqtt5-architecture.md) 旁路构建，完成能力迁移后删除旧实现。
 
 ## 2. 当前实现评估
 
 ### 2.1 可复用基础
 
-- Vert.x 5 MqttServer 已提供 MQTT 报文编解码、TCP/WS Endpoint 和异步运行时。
+- Netty MQTT codec 和 Reactor Netty 可提供 MQTT 报文编解码、TCP/WS 监听和异步运行时。
 - gateway 已按 Transport、Session、Manager、Store 分层。
 - 已有 MQTT 5 ACK、属性工具、主题树、内存 Store、指标和普通/增强认证雏形。
 - 已覆盖 Clean Start、Topic、Topic Tree 等少量 JUnit 5 测试。
@@ -43,7 +43,7 @@
 
     MQTT Client
          |
-    transport-vertx
+    transport-reactor
          |
     protocol -> core
                   |
@@ -51,14 +51,14 @@
        |          |           |          |
     store-*   security    plugins   observability
 
-protocol 保存纯 MQTT 模型、校验和状态机；core 保存 Broker 用例、领域状态及出入站端口；transport-vertx、store-memory、store-rocksdb、security-default、plugin-runtime 和 observability-micrometer 都是可替换适配器；broker 是唯一依赖装配和生命周期入口。完整模块边界、依赖图和接口契约见架构设计文档。
+protocol 保存纯 MQTT 模型、校验和状态机；core 保存 Broker 用例、领域状态及出入站端口；transport-reactor、store-memory、store-rocksdb、security-default、plugin-runtime 和 observability-micrometer 都是可替换适配器；broker 是唯一依赖装配和生命周期入口。完整模块边界、依赖图和接口契约见架构设计文档。
 
 ### 3.1 并发模型
 
 - Connection Mailbox 保证同一物理连接报文有序。
 - Session Mailbox 保证同一 clientId 的状态变更串行，不同 clientId 可并行。
 - Routing Coordinator 串行化订阅索引变更和路由快照，投递阶段按目标会话并行。
-- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，core 和运行时端口统一返回 Vert.x Future。
+- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，core 和运行时端口统一返回 Reactor Mono。
 - 取消当前虚拟线程 busy-poll；新消息、ACK 和窗口释放通过事件触发 drain。
 - Store 的复合操作必须原子化。内存实现使用事务锁和不可变快照，RocksDB 实现使用 WriteBatch。
 
@@ -179,7 +179,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 
 ### 7.1 插件执行边界
 
-插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。core 只定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部接口返回 Vert.x Future。
+插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。core 只定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部接口返回 Reactor Mono。
 
 - Authentication、Authorization、Connect、Publish、Subscribe 和 Will 属于持久化前的 Decision Hook，必须有超时、确定顺序和 fail-closed 结果。
 - Publish 修改后必须重新校验 Topic、Payload、Property、QoS 和配额，再执行授权与 Store 事务。
@@ -224,7 +224,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 ### P0：建立可运行基线
 
 - 修复并提交可复现的 Gradle wrapper。
-- 创建 protocol、core、store-memory、transport-vertx 和 broker 模块骨架。
+- 创建 protocol、core、store-memory、transport-reactor 和 broker 模块骨架。
 - 冻结旧 gateway 协议开发，新模块不得依赖旧模块。
 - 完成应用生命周期、动态测试端口和 Broker READY 等待机制。
 
