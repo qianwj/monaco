@@ -34,7 +34,7 @@ public class UnsubscribeTransition implements Transition<Command.Unsubscribe> {
         }
 
         // Send UNSUBACK
-        actions.add(new Action.SendPacket(command.clientId(),
+        actions.add(new Action.SendPacket(connection.toLocalRef(),
                 new ServerPacket.UnsubAck(packet.packetId(), reasonCodes, AckProperties.empty())));
 
         return TransitionResult.of(session, connection, actions);

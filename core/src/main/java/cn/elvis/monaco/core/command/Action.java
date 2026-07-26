@@ -1,5 +1,6 @@
 package cn.elvis.monaco.core.command;
 
+import cn.elvis.monaco.core.state.ConnectionRef;
 import cn.elvis.monaco.core.state.InflightRecord;
 import cn.elvis.monaco.core.state.SubscriptionRecord;
 import cn.elvis.monaco.core.state.WillRecord;
@@ -13,12 +14,12 @@ import java.util.List;
  */
 public sealed interface Action {
 
-    // --- Network actions ---
+    // --- Network actions (targeted by ConnectionRef to prevent stale delivery) ---
 
-    record SendPacket(String clientId, ServerPacket packet) implements Action {
+    record SendPacket(ConnectionRef target, ServerPacket packet) implements Action {
     }
 
-    record CloseConnection(String clientId) implements Action {
+    record CloseConnection(ConnectionRef target) implements Action {
     }
 
     // --- Keep alive ---
@@ -83,6 +84,6 @@ public sealed interface Action {
 
     // --- Message delivery ---
 
-    record DeliverMessage(String clientId, ServerPacket.Publish publish) implements Action {
+    record DeliverMessage(ConnectionRef target, ServerPacket.Publish publish) implements Action {
     }
 }

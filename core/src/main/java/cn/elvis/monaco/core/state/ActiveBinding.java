@@ -13,4 +13,11 @@ public record ActiveBinding(
         String ingressNode,
         long ownerEpoch
 ) {
+
+    /**
+     * Derives a ConnectionRef for targeting network actions to this binding.
+     */
+    public ConnectionRef toRef(int generation) {
+        return new ConnectionRef(connectionId, generation, ingressNode);
+    }
 }

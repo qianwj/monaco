@@ -25,7 +25,7 @@ public class PublishTransition implements Transition<Command.Publish> {
 
         if (packet.qos() == QoS.AT_MOST_ONCE) {
             // QoS 0: just route the message, no ack
-            actions.add(new Action.DeliverMessage(command.clientId(),
+            actions.add(new Action.DeliverMessage(connection.toLocalRef(),
                     new ServerPacket.Publish(packet.topicName(), packet.qos(),
                             packet.retain(), false, 0, packet.payload(), PublishProperties.empty())));
 
@@ -38,11 +38,11 @@ public class PublishTransition implements Transition<Command.Publish> {
                     false, 1, command.timestamp());
             actions.add(new Action.PersistInflight(inflight));
 
-            actions.add(new Action.DeliverMessage(command.clientId(),
+            actions.add(new Action.DeliverMessage(connection.toLocalRef(),
                     new ServerPacket.Publish(packet.topicName(), packet.qos(),
                             packet.retain(), false, packet.packetId(), packet.payload(), PublishProperties.empty())));
 
-            actions.add(new Action.SendPacket(command.clientId(),
+            actions.add(new Action.SendPacket(connection.toLocalRef(),
                     new ServerPacket.PubAck(packet.packetId(), ReasonCode.SUCCESS, AckProperties.empty())));
 
             actions.add(new Action.RemoveInflight(command.clientId(),
@@ -57,7 +57,7 @@ public class PublishTransition implements Transition<Command.Publish> {
                     false, 1, command.timestamp());
             actions.add(new Action.PersistInflight(inflight));
 
-            actions.add(new Action.SendPacket(command.clientId(),
+            actions.add(new Action.SendPacket(connection.toLocalRef(),
                     new ServerPacket.PubRec(packet.packetId(), ReasonCode.SUCCESS, AckProperties.empty())));
         }
 

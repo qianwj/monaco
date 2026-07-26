@@ -4,6 +4,7 @@ import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
 import cn.elvis.monaco.core.config.BrokerConfig;
 import cn.elvis.monaco.core.state.ActiveBinding;
+import cn.elvis.monaco.core.state.ConnectionRef;
 import cn.elvis.monaco.core.state.LogicalConnection;
 import cn.elvis.monaco.core.state.SessionRecord;
 import cn.elvis.monaco.core.state.WillRecord;
@@ -60,9 +61,10 @@ public class ConnectTransition implements Transition<Command.Connect> {
 
         // Session takeover: disconnect old connection
         if (existingSession != null && existingSession.isConnected()) {
-            actions.add(new Action.SendPacket(existingSession.clientId(),
+            ConnectionRef oldRef = existingSession.activeBinding().toRef(existingSession.connectionGeneration());
+            actions.add(new Action.SendPacket(oldRef,
                     new ServerPacket.Disconnect(ReasonCode.SESSION_TAKEN_OVER, null)));
-            actions.add(new Action.CloseConnection(existingSession.clientId()));
+            actions.add(new Action.CloseConnection(oldRef));
         }
 
         // Cancel pending session expiry
@@ -129,7 +131,8 @@ public class ConnectTransition implements Transition<Command.Connect> {
         );
 
         // Send CONNACK
-        actions.add(new Action.SendPacket(command.assignedClientId(),
+        ConnectionRef newRef = connection.toLocalRef();
+        actions.add(new Action.SendPacket(newRef,
                 new ServerPacket.ConnAck(sessionPresent, ReasonCode.SUCCESS, connAckProps)));
 
         // Start keep alive timer

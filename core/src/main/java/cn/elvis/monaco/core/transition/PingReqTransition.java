@@ -13,7 +13,7 @@ public class PingReqTransition implements Transition<Command.PingReq> {
     public TransitionResult apply(Command.PingReq command, SessionRecord session,
                                   LogicalConnection connection, BrokerConfig config) {
         return TransitionResult.of(session, connection,
-                new Action.SendPacket(command.clientId(), new ServerPacket.PingResp()),
+                new Action.SendPacket(connection.toLocalRef(), new ServerPacket.PingResp()),
                 new Action.ResetKeepAliveTimer(command.clientId()));
     }
 }

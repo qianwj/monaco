@@ -47,7 +47,7 @@ public class DisconnectTransition implements Transition<Command.Disconnect> {
             actions.add(new Action.PersistSession(command.clientId()));
         }
 
-        actions.add(new Action.CloseConnection(command.clientId()));
+        actions.add(new Action.CloseConnection(connection.toLocalRef()));
 
         return TransitionResult.of(disconnected, null, actions);
     }

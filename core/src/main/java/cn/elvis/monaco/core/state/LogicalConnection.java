@@ -19,4 +19,18 @@ public record LogicalConnection(
         int topicAliasMaximum,
         int keepAlive
 ) {
+
+    /**
+     * Derives a ConnectionRef from this logical connection state.
+     */
+    public ConnectionRef toRef(String ingressNode) {
+        return new ConnectionRef(connectionId, generation, ingressNode);
+    }
+
+    /**
+     * Derives a local ConnectionRef (single-node deployment).
+     */
+    public ConnectionRef toLocalRef() {
+        return ConnectionRef.local(connectionId, generation);
+    }
 }
