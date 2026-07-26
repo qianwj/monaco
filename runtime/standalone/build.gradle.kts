@@ -7,12 +7,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":core"))
-    implementation(project(":protocol"))
-    implementation(platform(libs.reactor.bom))
-    implementation(libs.reactor.core)
-    implementation(libs.reactor.netty.core)
-    implementation(libs.netty.codec.mqtt)
+    api(project(":runtime:core"))
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.reactor.test)

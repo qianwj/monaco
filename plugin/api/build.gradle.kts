@@ -27,6 +27,6 @@ tasks.named<Test>("test") {
 }
 
 tasks.withType<Javadoc>().configureEach {
-    (options as org.gradle.external.javadoc.StandardJavadocDocletOptions)
+    (options as StandardJavadocDocletOptions)
         .addBooleanOption("Xdoclint:all,-missing", true)
 }

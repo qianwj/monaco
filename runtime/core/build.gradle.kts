@@ -10,6 +10,8 @@ dependencies {
     api(project(":core"))
     api(platform(libs.reactor.bom))
     api(libs.reactor.core)
+    implementation(libs.reactor.netty.core)
+    implementation(libs.netty.codec.mqtt)
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.reactor.test)

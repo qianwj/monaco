@@ -16,12 +16,12 @@ import java.util.function.Function;
  * executes at a time — the next command starts only after the
  * previous Mono completes.
  */
-class ShardMailbox {
+public class ShardMailbox {
 
     private final Sinks.Many<Envelope> inbox;
     private final AtomicBoolean disposed = new AtomicBoolean(false);
 
-    ShardMailbox(int capacity) {
+    public ShardMailbox(int capacity) {
         this.inbox = Sinks.many().multicast().onBackpressureBuffer(capacity, false);
 
         // Single drain loop — concatMap ensures serial execution
@@ -33,7 +33,7 @@ class ShardMailbox {
                 .subscribe();
     }
 
-    Mono<CommandResult> submit(SessionCommand command,
+    public Mono<CommandResult> submit(SessionCommand command,
                                Function<SessionCommand, Mono<CommandResult>> handler) {
         if (disposed.get()) {
             return Mono.just(new CommandResult.Rejected(
@@ -52,7 +52,7 @@ class ShardMailbox {
         });
     }
 
-    void dispose() {
+    public void dispose() {
         if (disposed.compareAndSet(false, true)) {
             inbox.tryEmitComplete();
         }
