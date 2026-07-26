@@ -15,8 +15,9 @@ include(
     // 新架构模块
     "protocol",
     "core",
-    "runtime-reactor",
-    "transport-reactor",
+    "runtime",
+    "runtime:core",
+    "runtime:standalone",
     "store",
     "store:memory",
     "store:rocksdb",
@@ -24,6 +25,10 @@ include(
     "plugin:api",
     "plugin:runtime",
     "plugin:remote",
+    "auth",
+    "auth:credential",
+    "auth:credential:env",
+    "auth:simple",
     "observability-micrometer",
     "broker",
     "testkit"
