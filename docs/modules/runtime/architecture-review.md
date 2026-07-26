@@ -11,17 +11,17 @@
 最初单机架构由 `core` 同时承担领域规则和 Reactor 用例编排。引入集群、Ratis 确定性状态机和多种 Store Profile 后，目标架构将其拆为：
 
 ```text
-protocol
-   |
-core                        pure Command/State/Transition
-   |
-core.port                   Store/Policy/Event 等 Mono/Flux 端口
-   |
-runtime-reactor             use case、事务编排、mailbox
-   |-- transport.netty      MQTT TCP/TLS/WS、codec、Channel registry
-   +-----------+-------------------+
-               |                   |
-          store/security      cluster-runtime
+protocol <- core
+            |-- command/state/transition/rule   pure Java
+            `-- port                            Mono/Flux contracts
+                 ^                    ^
+                 |                    |
+          runtime-reactor       store/security/plugin/obs
+            |-- use case、事务编排、mailbox
+            `-- transport.netty
+                 ^
+                 |
+          cluster-runtime
 ```
 
 该拆分以包边界保证领域纯度，并让单机/集群复用同一应用端口。问题不在模块是否存在，而在当前端口所有权、依赖、事务、连接定位和并发实现尚未满足这个边界。
@@ -36,14 +36,13 @@ runtime-reactor/
   handler/                 CONNECT/PUBLISH/SUBSCRIBE 等编排
   dispatch/                Local/Cluster typed dispatcher 端口
   session/                 SessionProcessor、ShardMailbox
-  port/                    StateStore、ConnectionSink、Policy、Scheduler
   transport/netty/         Reactor Netty、MQTT codec、PhysicalConnectionState
 ```
 
 合并只取消 Gradle 模块边界，不取消逻辑边界：
 
 1. Netty `Channel`、`ByteBuf`、`MqttMessage` 只能出现在 `transport.netty` 包。
-2. runtime 公共端口只暴露 protocol/core 类型、`ConnectionRef` 和 Mono/Flux。
+2. runtime 公共接口只暴露 protocol/core 类型、`ConnectionRef` 和 Mono/Flux；外层 adapter 实现的稳定端口归 `core.port`。
 3. Reactor Netty 与 Netty MQTT codec 使用 `implementation`，不能从 `api` 泄漏。
 4. `PhysicalConnectionState` 位于 `transport.netty`；`LogicalConnectionState` 和 Session 状态不能持有 Channel。
 5. `cluster-transport-rsocket` 仍是独立模块，它解决 Broker peer 通信，不属于 MQTT 客户端接入。
@@ -97,7 +96,7 @@ public interface BrokerStore {
 这会产生 ACK 已发送但状态未提交、Session 已更新但 Inflight 未更新、崩溃后 QoS 无法恢复等错误。必须改为：
 
 ```text
-Transition -> MutationBatch -> StateStore transaction/raft commit
+Transition -> MutationBatch -> BrokerStore commit/raft commit
            -> update derived cache -> execute external actions
 ```
 
@@ -109,17 +108,17 @@ Transition -> MutationBatch -> StateStore transaction/raft commit
 
 所有网络 Action 必须指向完整的 `ConnectionRef(connectionId, generation, ingressNode)`。物理 Channel registry 应位于 `runtime-reactor` 的 `transport.netty` 包，其他 runtime 包只依赖 `ConnectionSink` 端口。
 
-### P0-3：Dispatcher 不能实现远程派发
+### P0-3：Dispatcher 集群契约仍需冻结
 
-[`CommandDispatcher`](../../../runtime-reactor/src/main/java/cn/elvis/monaco/runtime/dispatch/CommandDispatcher.java) 接收 `Function<String, Mono<R>>`。Java lambda 不能编码为集群协议，`cluster-runtime` 无法实现同一端口。
+[`CommandDispatcher`](../../../runtime-reactor/src/main/java/cn/elvis/monaco/runtime/dispatch/CommandDispatcher.java) 已从 lambda 改为类型化 `SessionCommand -> Mono<CommandResult>`，原始阻断已经修复。剩余工作是冻结分区定位、stale epoch/redirect、取消和生命周期语义，并建立 Local/Cluster contract test。
 
-端口应接收类型化 `SessionCommand` 和 `PartitionTarget`，返回 `Mono<CommandResult>`。Local 实现进入本地 Shard mailbox，Cluster 实现决定本地执行或映射到 RSocket frame。
+`SessionCommand` 必须保持纯数据并可映射到 cluster wire；Local 实现进入本地 Shard mailbox，Cluster 实现根据 clientId/PartitionTable 决定本地执行或映射到 RSocket frame。不能把本地 handler lambda 放入接口或 command。
 
-### P0-4：未保证 Session 串行化
+### P0-4：ShardMailbox 已实现但缺少并发证明
 
-[`LocalDispatcher`](../../../runtime-reactor/src/main/java/cn/elvis/monaco/runtime/dispatch/LocalDispatcher.java) 的 `subscribeOn(singleScheduler)` 只串行执行订阅动作；前一个异步 Mono 尚未完成时，下一个命令仍可能开始执行。
+[`LocalDispatcher`](../../../runtime-reactor/src/main/java/cn/elvis/monaco/runtime/dispatch/LocalDispatcher.java) 已改为有界 [`ShardMailbox`](../../../runtime-reactor/src/main/java/cn/elvis/monaco/runtime/dispatch/ShardMailbox.java)，并使用 `concatMap` 等待前一个异步 command 终止。实现方向正确，但当前没有并发、溢出、取消、dispose 与未消费错误测试。
 
-每个固定 Shard lane 必须使用有界 mailbox 和 `concatMap`/单消费者 drain，保证前一个命令得到终态后才处理下一个命令。队列必须具备容量、拒绝策略、指标和关闭语义。
+验收必须证明同一 Shard 的 active command 最大为 1，并验证队列容量、拒绝结果、指标和关闭期间未完成 command 的确定语义。
 
 ### P0-5：LogicalConnectionState 未参与处理
 
@@ -135,14 +134,14 @@ Store 接口位于 `runtime-reactor`，与现有 adapter 依赖方向不一致�
 
 ## 5. 重要问题
 
-### P1-1：模块未接入应用依赖图
+### P1-1：runtime-reactor 未接入应用装配
 
-[`broker/build.gradle.kts`](../../../broker/build.gradle.kts)、`transport-reactor`、`store-memory`、`store-rocksdb`、security 和 plugin runtime 当前均直接依赖 `core`，没有依赖 `runtime-reactor`。Gradle runtimeClasspath 也确认 broker 中不存在该模块。因此 runtime 目前只是可独立编译的代码岛，transport 也尚未并入。
+[`broker/build.gradle.kts`](../../../broker/build.gradle.kts) 当前没有依赖 `runtime-reactor`，transport 也尚未并入，因此 runtime 仍是可独立编译的代码岛。`store:memory`、`store:rocksdb`、security 和 plugin runtime 直接依赖 `core` 与修订后的目标方向一致；缺失的是 core 中可供它们实现的稳定端口。
 
 目标依赖必须是：
 
 ```text
-runtime-reactor        -> core + protocol
+runtime-reactor        -> core
 store-*                -> core ports
 security/plugin/obs    -> core ports
 cluster-runtime        -> runtime-reactor + core

@@ -1,4 +1,4 @@
-package cn.elvis.monaco.runtime.store;
+package cn.elvis.monaco.core.store;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.state.SessionRecord;
