@@ -29,7 +29,7 @@ testkit 为单机 Broker、Store、Core、Transport 和 Plugin 测试提供公�
 | 编号 | 条件 | 影响范围 | 状态 |
 | --- | --- | --- | --- |
 | PRE-01 | 项目统一 Java 21 或 Java 25 toolchain，testkit 继承根约定 | 全阶段 | ⬜ 待决策 |
-| PRE-02 | core 的 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、`BrokerStore` 端口冻结 | TK-P0 | 🟨 状态模型已实现，原子 Store/时间端口待实现 |
+| PRE-02 | core 的 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、`BrokerStore` 端口冻结 | TK-P0 | ✅ 已实现 |
 | PRE-03 | `BrokerEngine`、Connection/Domain Event 等端口冻结 | TK-P1 | ⬜ 待实现 |
 | PRE-04 | broker 暴露可测试的生命周期和实际监听地址 | TK-P1 | ⬜ 待实现 |
 | PRE-05 | QoS 2、恢复模型和 RocksDB Store 端口冻结 | TK-P2 | ⬜ 待实现 |
@@ -37,20 +37,20 @@ testkit 为单机 Broker、Store、Core、Transport 和 Plugin 测试提供公�
 
 PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。其他前置可以与对应阶段并行开发，但 provider 任务必须等待生产端口可编译。
 
-当前实现说明：Core 已提供状态 record，并把细粒度 CRUD Store 与 `StateTransaction` 迁入 Core；但 [Runtime 架构评审](runtime/architecture-review.md#3-core-的-reactor-与-store-端口决策) 已明确这些接口仍需收敛为支持 revision/epoch fencing 和原子 `MutationBatch` 的 `BrokerStore`。testkit 不绑定这组过渡接口，也不为其编写会被删除的契约或故障包装器。`BrokerClock`、`BrokerScheduler`、`IdGenerator` 和出站端口仍未提供，因此现有确定性基础类继续保持测试侧独立实现，待稳定生产端口落地后机械适配。
+当前实现说明：Core 已提供 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、原子 `BrokerStore`、`ConnectionSink`、`MutationBatch` 和状态 record。确定性时间能力已适配正式端口，Store/Connection recording 与故障包装器也已落地。认证、授权、Domain Event 和 Telemetry 端口仍未定义，因此对应 Stub/Recording 继续等待生产契约。当前 `BrokerStore.load(clientId)` 只返回 Session/Subscription/Inflight/Will，无法观察 Retain/Pending Message；旧 ST-001~ST-003 中的 `recover()` 和 transaction callback 也已不属于新 API，必须先修订 Case 后再实现共同契约。
 
 ## 3. 任务总览
 
 | 任务 | 产出 | 前置 | 主要 Case | 状态 |
 | --- | --- | --- | --- | --- |
 | TK-P0-1 | Gradle test fixtures 与依赖边界 | PRE-01 | TK-014 | ✅ 已完成 |
-| TK-P0-2 | 确定性 Clock、Scheduler、ID | PRE-02 | TK-001~TK-006 | 🟨 基础能力完成，待适配 Core 端口 |
+| TK-P0-2 | 确定性 Clock、Scheduler、ID | PRE-02 | TK-001~TK-006 | ✅ 已完成 |
 | TK-P0-3 | Probe 与统一 Trace | TK-P0-2 | TK-007~TK-008 | ✅ 已完成 |
-| TK-P0-4 | Recording/Stub 出站端口 | PRE-02、TK-P0-3 | CO-010~CO-011、CO-036 | ⬜ 等待 Core 出站端口 |
-| TK-P0-5 | FaultPlan、Gate 和故障包装器 | PRE-02、TK-P0-3 | TK-009、ST-003~ST-004 | 🟨 FaultPlan/Gate 完成，待端口包装器 |
+| TK-P0-4 | Recording/Stub 出站端口 | PRE-02、TK-P0-3 | CO-010~CO-011、CO-036 | 🟨 Connection/Store 完成，其余端口待定义 |
+| TK-P0-5 | FaultPlan、Gate 和故障包装器 | PRE-02、TK-P0-3 | TK-009、ST-003~ST-004 | ✅ 已完成 |
 | TK-P0-6 | Packet/State/Trace Assertions | protocol P0 | TK-013 | ✅ 已完成 |
-| TK-P0-7 | Store Fixture SPI | PRE-02 | ST-001~ST-004 | ⬜ 等待原子 BrokerStore 端口 |
-| TK-P0-8 | BrokerStoreContract 基线 | TK-P0-5~TK-P0-7 | ST-001~ST-004 | ⬜ 等待原子 BrokerStore 端口 |
+| TK-P0-7 | Store Fixture SPI | PRE-02 | ST-001~ST-004 | ✅ 已完成 |
+| TK-P0-8 | BrokerStoreContract 基线 | TK-P0-5~TK-P0-7 | ST-001~ST-004 | ⬜ 等待 Store Case/可观察面统一 |
 | TK-P0-9 | Fixture 清理与依赖自检 | TK-P0-1~TK-P0-8 | TK-010、TK-014 | 🟨 清理/依赖自检完成，泄漏审计待实现 |
 | TK-P1-1 | Packet Builders | protocol packet/property | CO/E2E P0-P1 | ✅ 已完成 |
 | TK-P1-2 | BrokerEngineHarnessProvider 与 Harness | PRE-03、TK-P0 | CO-001~CO-036 | ⬜ 待实现 |
@@ -139,11 +139,13 @@ PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。�
 - `port/StubAuthenticator.java`
 - `port/StubAuthorizer.java`
 
+当前进度：已实现 `RecordingConnectionSink`、`RecordingBrokerStore`、Connection/Store TraceEvent 和 Probe 接入。Core 尚未定义 Domain Event、Telemetry、Authenticator、Authorizer 端口，对应实现不创建测试侧占位接口。
+
 要求：
 
 - 默认 allow，但测试可按调用序号、clientId、Topic/Filter 返回结果或错误。
 - 所有动作写入同一个 TraceProbe。
-- ConnectionSink 支持 send/flush/close 的成功、延迟和失败控制。
+- ConnectionSink 对现行 send/close 提供成功、延迟和失败控制；Core 后续新增 flush 时同步扩展。
 - Stub 不复制生产认证、授权或 telemetry 逻辑。
 
 ### TK-P0-5：故障计划与并发 Gate
@@ -155,6 +157,8 @@ PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。�
 - `fault/Gate.java`
 - `fault/FaultInjectingBrokerStore.java`
 - 按需要增加 ConnectionSink、EventSink、Auth 端口包装器。
+
+当前进度：`FaultPlan`、`Gate`、`FaultInjectingBrokerStore` 和 `FaultInjectingConnectionSink` 已实现。`STORE_AFTER_COMMIT` 只在 delegate 返回 `CommitResult.Success` 后触发；Revision Conflict/Store Error 不伪装成已提交。
 
 要求：
 
@@ -194,6 +198,8 @@ PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。�
 - capability 只表达持久重启、schema migration、并发事务等真实能力。
 - 契约不得使用 Store 类型名或 `instanceof` 分支。
 
+当前进度：四个公共 SPI 类型均已实现；`StoreTestDirectory` 限制路径位于自有目录内并支持幂等递归清理。具体 Memory/RocksDB provider 仍由各 Store 模块拥有。
+
 ### TK-P0-8：BrokerStoreContract 基线
 
 实现 ST-001~ST-004：
@@ -207,6 +213,8 @@ Memory Store 的消费者任务：
 
 - `store-memory` 增加 `MemoryStoreFixtureProvider` 和 `MemoryBrokerStoreContractTest`。
 - 该 provider 位于 `store-memory/src/test` 或其 test fixtures，不移动到 testkit。
+
+当前阻塞：现行 `BrokerStore` 没有 `recover()`/transaction callback，`ShardSnapshot` 也不包含 Retain/Pending Message，因此不能如实实现当前 ST-001~ST-003。需要先把 Case 改写为 `load/commit/revision` 语义，或扩展 Store 的公共可观察面；testkit 不通过反射或具体 Store API 绕过该边界。
 
 ### TK-P0-9：自测试与清理
 

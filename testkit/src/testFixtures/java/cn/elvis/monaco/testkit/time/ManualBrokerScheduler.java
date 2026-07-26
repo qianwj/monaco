@@ -38,7 +38,7 @@ public final class ManualBrokerScheduler implements BrokerScheduler {
         this.maxCascadeTasks = maxCascadeTasks;
     }
 
-    public synchronized void schedule(
+    public synchronized void scheduleAsync(
             String key,
             Duration delay,
             Supplier<? extends Mono<Void>> action) {
@@ -60,7 +60,7 @@ public final class ManualBrokerScheduler implements BrokerScheduler {
     @Override
     public Mono<Void> schedule(String key, Duration delay, Runnable task) {
         Objects.requireNonNull(task, "task");
-        return Mono.fromRunnable(() -> schedule(key, delay, () -> Mono.fromRunnable(task)));
+        return Mono.fromRunnable(() -> scheduleAsync(key, delay, () -> Mono.fromRunnable(task)));
     }
 
     public synchronized boolean cancelNow(String key) {

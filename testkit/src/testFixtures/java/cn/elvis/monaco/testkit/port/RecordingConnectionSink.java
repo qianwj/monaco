@@ -16,7 +16,7 @@ public final class RecordingConnectionSink implements ConnectionSink {
     private final TraceProbe trace;
     private final SendBehavior sendBehavior;
     private final CloseBehavior closeBehavior;
-    private final PacketProbe<ServerPacket> packets = new PacketProbe<>("connection packets");
+    private final PacketProbe packets = new PacketProbe("connection packets");
     private final EventProbe<ConnectionRef> closes = new EventProbe<>("connection closes");
 
     public RecordingConnectionSink(TraceProbe trace) {
@@ -54,7 +54,7 @@ public final class RecordingConnectionSink implements ConnectionSink {
         }).doOnError(trace::recordError);
     }
 
-    public PacketProbe<ServerPacket> packets() {
+    public PacketProbe packets() {
         return packets;
     }
 

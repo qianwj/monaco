@@ -22,9 +22,9 @@ class ManualBrokerSchedulerTest {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
         List<String> calls = new ArrayList<>();
-        scheduler.schedule("later", Duration.ofSeconds(2), record(calls, "later"));
-        scheduler.schedule("first", Duration.ofSeconds(1), record(calls, "first"));
-        scheduler.schedule("second", Duration.ofSeconds(1), record(calls, "second"));
+        scheduler.scheduleAsync("later", Duration.ofSeconds(2), record(calls, "later"));
+        scheduler.scheduleAsync("first", Duration.ofSeconds(1), record(calls, "first"));
+        scheduler.scheduleAsync("second", Duration.ofSeconds(1), record(calls, "second"));
 
         StepVerifier.create(scheduler.advanceBy(Duration.ofSeconds(2))).verifyComplete();
 
@@ -37,9 +37,9 @@ class ManualBrokerSchedulerTest {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
         List<String> calls = new ArrayList<>();
-        scheduler.schedule("replace", Duration.ZERO, record(calls, "old"));
-        scheduler.schedule("replace", Duration.ZERO, record(calls, "new"));
-        scheduler.schedule("cancel", Duration.ZERO, record(calls, "cancelled"));
+        scheduler.scheduleAsync("replace", Duration.ZERO, record(calls, "old"));
+        scheduler.scheduleAsync("replace", Duration.ZERO, record(calls, "new"));
+        scheduler.scheduleAsync("cancel", Duration.ZERO, record(calls, "cancelled"));
 
         assertTrue(scheduler.cancelNow("cancel"));
         assertFalse(scheduler.cancelNow("cancel"));
@@ -53,9 +53,9 @@ class ManualBrokerSchedulerTest {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
         List<String> calls = new ArrayList<>();
-        scheduler.schedule("outer", Duration.ZERO, () -> Mono.fromRunnable(() -> {
+        scheduler.scheduleAsync("outer", Duration.ZERO, () -> Mono.fromRunnable(() -> {
             calls.add("outer");
-            scheduler.schedule("inner", Duration.ZERO, record(calls, "inner"));
+            scheduler.scheduleAsync("inner", Duration.ZERO, record(calls, "inner"));
         }));
 
         StepVerifier.create(scheduler.runDueTasks()).verifyComplete();
@@ -67,8 +67,8 @@ class ManualBrokerSchedulerTest {
     void propagatesActionFailureAndLeavesLaterTaskPending() {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
-        scheduler.schedule("failure", Duration.ZERO, () -> Mono.error(new TestException()));
-        scheduler.schedule("later", Duration.ZERO, Mono::empty);
+        scheduler.scheduleAsync("failure", Duration.ZERO, () -> Mono.error(new TestException()));
+        scheduler.scheduleAsync("later", Duration.ZERO, Mono::empty);
 
         StepVerifier.create(scheduler.runDueTasks()).expectError(TestException.class).verify();
 
@@ -80,9 +80,9 @@ class ManualBrokerSchedulerTest {
     void limitsCascadingTasks() {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock, 2);
-        scheduler.schedule("one", Duration.ZERO, () -> Mono.fromRunnable(() ->
-                scheduler.schedule("two", Duration.ZERO, () -> Mono.fromRunnable(() ->
-                        scheduler.schedule("three", Duration.ZERO, Mono::empty)))));
+        scheduler.scheduleAsync("one", Duration.ZERO, () -> Mono.fromRunnable(() ->
+                scheduler.scheduleAsync("two", Duration.ZERO, () -> Mono.fromRunnable(() ->
+                        scheduler.scheduleAsync("three", Duration.ZERO, Mono::empty)))));
 
         StepVerifier.create(scheduler.runDueTasks())
                 .expectErrorMessage("scheduled task cascade exceeded 2")
@@ -96,9 +96,9 @@ class ManualBrokerSchedulerTest {
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock());
 
         assertThrows(IllegalArgumentException.class,
-                () -> scheduler.schedule("", Duration.ZERO, Mono::empty));
+                () -> scheduler.scheduleAsync("", Duration.ZERO, Mono::empty));
         assertThrows(IllegalArgumentException.class,
-                () -> scheduler.schedule("task", Duration.ofSeconds(-1), Mono::empty));
+                () -> scheduler.scheduleAsync("task", Duration.ofSeconds(-1), Mono::empty));
         assertThrows(IllegalArgumentException.class,
                 () -> new ManualBrokerScheduler(clock(), 0));
     }
@@ -129,7 +129,7 @@ class ManualBrokerSchedulerTest {
     void concurrentDrainDoesNotAdvanceClock() {
         MutableBrokerClock clock = clock();
         ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
-        scheduler.schedule("never", Duration.ZERO, Mono::never);
+        scheduler.scheduleAsync("never", Duration.ZERO, Mono::never);
         Disposable running = scheduler.runDueTasks().subscribe();
         try {
             StepVerifier.create(scheduler.advanceBy(Duration.ofSeconds(1)))

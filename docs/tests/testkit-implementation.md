@@ -30,7 +30,7 @@ testkit 为 Monaco 各模块提供可复用、确定性、与生产运行时隔�
 
 ## 2. 当前基线与待统一项
 
-当前 `testkit/` 已完成 Gradle test fixtures 隔离、确定性 Clock/Scheduler/ID、Probe/Trace、FaultPlan/Gate、公共断言、FixtureResourceRegistry 和第一版 PacketBuilders，并具备对应自测试。`protocol` 的 P0 值对象、客户端报文和属性已足够支持显式 Packet Builder；Property Schema 和 QoS/AUTH 状态机仍待后续阶段完成。Core 已提供状态 record 及过渡期的细粒度 Store/StateTransaction 接口，但同版本架构评审要求它们收敛为真正原子的 `BrokerStore`，Clock/Scheduler/ID 和出站端口也尚未冻结。因此 testkit 不绑定过渡 Store 接口；Recording、Store Fixture/Contract 和故障端口包装器等待稳定生产端口后实施。
+当前 `testkit/` 已完成 Gradle test fixtures 隔离、确定性 Clock/Scheduler/ID 端口适配、Probe/Trace、FaultPlan/Gate、Connection/Store recording 与故障包装器、Store Fixture SPI、公共断言、FixtureResourceRegistry 和第一版 PacketBuilders，并具备对应自测试。`protocol` 的 P0 值对象、客户端报文和属性已足够支持显式 Packet Builder；Property Schema 和 QoS/AUTH 状态机仍待后续阶段完成。Core 已提供原子 `BrokerStore` 与 `ConnectionSink`，但认证/授权/Event/Telemetry 端口尚未定义；现行 Store 快照也无法覆盖旧 ST Case 的全部观察项，因此 Recording Stub 和 Store Contract 只继续实现生产 API 能够真实表达的部分。
 
 实现前需要统一三处文档差异：
 
