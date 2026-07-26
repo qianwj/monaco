@@ -1,4 +1,13 @@
-package cn.elvis.monaco.logging; /**
+package cn.elvis.monaco.logging;
+
+import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+
+/**
  * 异步 Handler（纯 Java）：使用无界队列 + 独立工作线程。
  * 将 LogRecord 放入队列，由后台线程调用目标 handler.publish()。
  */

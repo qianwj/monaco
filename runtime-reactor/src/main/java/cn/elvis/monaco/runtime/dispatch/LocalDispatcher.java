@@ -1,35 +1,51 @@
 package cn.elvis.monaco.runtime.dispatch;
 
+import cn.elvis.monaco.core.command.CommandResult;
+import cn.elvis.monaco.core.command.SessionCommand;
 import reactor.core.publisher.Mono;
-import reactor.core.publisher.Sinks;
-import reactor.core.scheduler.Scheduler;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.function.Function;
 
+/**
+ * Local dispatcher that routes SessionCommands to sharded mailboxes.
+ * <p>
+ * Each shard is a serial execution lane backed by a bounded mailbox.
+ * Commands for the same clientId always land on the same shard,
+ * guaranteeing session-level serial execution via concatMap drain.
+ */
 public class LocalDispatcher implements CommandDispatcher {
 
-    private final int shardCount;
-    private final Scheduler[] shards;
+    private static final int DEFAULT_SHARD_COUNT = Runtime.getRuntime().availableProcessors();
+    private static final int DEFAULT_MAILBOX_CAPACITY = 256;
 
-    public LocalDispatcher(int shardCount) {
+    private final int shardCount;
+    private final ShardMailbox[] shards;
+    private final Function<SessionCommand, Mono<CommandResult>> handler;
+
+    public LocalDispatcher(Function<SessionCommand, Mono<CommandResult>> handler) {
+        this(DEFAULT_SHARD_COUNT, DEFAULT_MAILBOX_CAPACITY, handler);
+    }
+
+    public LocalDispatcher(int shardCount, int mailboxCapacity,
+                           Function<SessionCommand, Mono<CommandResult>> handler) {
         this.shardCount = shardCount;
-        this.shards = new Scheduler[shardCount];
+        this.handler = handler;
+        this.shards = new ShardMailbox[shardCount];
         for (int i = 0; i < shardCount; i++) {
-            this.shards[i] = Schedulers.newSingle("shard-" + i, true);
+            this.shards[i] = new ShardMailbox(mailboxCapacity);
         }
     }
 
     @Override
-    public <R> Mono<R> dispatch(String clientId, Function<String, Mono<R>> task) {
-        int shard = Math.floorMod(clientId.hashCode(), shardCount);
-        return Mono.defer(() -> task.apply(clientId))
-                .subscribeOn(shards[shard]);
+    public Mono<CommandResult> dispatch(SessionCommand command) {
+        int shard = Math.floorMod(command.clientId().hashCode(), shardCount);
+        return shards[shard].submit(command, handler);
     }
 
+    @Override
     public void dispose() {
-        for (Scheduler sched : shards) {
-            sched.dispose();
+        for (ShardMailbox mailbox : shards) {
+            mailbox.dispose();
         }
     }
 }

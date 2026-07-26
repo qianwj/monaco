@@ -41,6 +41,12 @@ public sealed interface CommandResult {
         /** Store transaction failed. */
         COMMIT_FAILED,
         /** Protocol violation. */
-        PROTOCOL_ERROR
+        PROTOCOL_ERROR,
+        /** Mailbox capacity exceeded — client sending too fast. */
+        QUOTA_EXCEEDED,
+        /** Broker is shutting down. */
+        SERVER_SHUTTING_DOWN,
+        /** Unclassified internal error. */
+        INTERNAL_ERROR
     }
 }

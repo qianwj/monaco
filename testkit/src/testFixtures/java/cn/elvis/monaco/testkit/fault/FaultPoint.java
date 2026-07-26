@@ -1,0 +1,14 @@
+package cn.elvis.monaco.testkit.fault;
+
+public enum FaultPoint {
+    STORE_BEFORE_OPERATION,
+    STORE_BEFORE_COMMIT,
+    STORE_AFTER_COMMIT,
+    SINK_BEFORE_SEND,
+    SINK_AFTER_SEND,
+    SINK_CLOSE,
+    EVENT_PUBLISH,
+    AUTHENTICATE,
+    AUTHORIZE,
+    SCHEDULER_BEFORE_ACTION
+}

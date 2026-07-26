@@ -4,7 +4,7 @@ An mqtt broker based on vertx
 ## Architecture
 
 ### Layer
-![layer](./design/export/layer.png)
+![layer](docs/design/export/layer.png)
 
 #### Transport Layer
 

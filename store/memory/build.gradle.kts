@@ -8,8 +8,11 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":runtime-reactor"))
+    implementation(libs.reactor.core)
 
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.reactor.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

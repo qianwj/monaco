@@ -1,16 +1,10 @@
 package cn.elvis.monaco;
 
 import cn.elvis.monaco.entity.codec.EventMessageCodec;
-import cn.elvis.monaco.manager.*;
-import cn.elvis.monaco.manager.standalone.*;
 import cn.elvis.monaco.metrics.Metrics;
-import cn.elvis.monaco.session.*;
 import cn.elvis.monaco.settings.Settings;
-import cn.elvis.monaco.store.*;
-import cn.elvis.monaco.store.memory.*;
-import cn.elvis.monaco.transport.TCPTransport;
-import cn.elvis.monaco.transport.WebSocketTransport;
 import io.vertx.core.*;
+import io.vertx.core.internal.logging.LoggerFactory;
 import io.vertx.micrometer.MicrometerMetricsFactory;
 
 /**
@@ -39,7 +33,8 @@ public final class MonacoServer {
     public void start() {
         printSettings(settings);
         EventMessageCodec.register(vertx);
-        init();
+        Module.init(vertx, settings);
+        LoggerFactory.getLogger("[MONACO]").info("MonacoServer started.");
     }
 
     public void stop() {
@@ -57,46 +52,6 @@ public final class MonacoServer {
                     .withMetrics(new MicrometerMetricsFactory(Metrics.registry()));
         }
         return builder.build();
-    }
-
-    private void init() {
-        final ClientSessionStore clientSessionStore = new MemoryClientSessionStore();
-        final TopicAliasStore topicAliasStore = new MemoryTopicAliasStore();
-        final SubscriptionStore subscriptionStore = new MemorySubscriptionStore();
-        final RetainMessageStore retainMessageStore = new MemoryRetainMessageStore();
-        final MessageStore messageStore = new MemoryMessageStore();
-        final ClientSessionManager clientSessionManager = new DefaultClientSessionManager(settings, vertx, topicAliasStore, clientSessionStore, messageStore);
-        final PacketIdentifierManager packetIdentifierManager = new DefaultPacketIdentifierManager();
-        final PublisherManager publisherManager = new DefaultPublisherManager(settings, vertx, clientSessionStore, topicAliasStore, retainMessageStore);
-        final SubscriberManager subscriberManager = new DefaultSubscriberManager(settings, vertx.eventBus(), subscriptionStore);
-        final WillManager willManager = new DefaultWillManager(vertx.eventBus());
-        final EndpointHandler handler = new EndpointHandler(
-                clientSessionManager,
-                packetIdentifierManager,
-                publisherManager,
-                subscriberManager,
-                willManager
-        );
-        vertx.deployVerticle(
-                () -> new PushService(subscriptionStore, clientSessionStore),
-                new DeploymentOptions()
-                        .setInstances(1)
-                        .setThreadingModel(ThreadingModel.WORKER)
-        );
-        if (settings.tcp().enable()) {
-            vertx.deployVerticle(
-                    () -> new TCPTransport(settings, handler),
-                    new DeploymentOptions()
-                            .setInstances(settings.tcp().instances())
-            );
-        }
-        if (settings.webSocket().enable()) {
-            vertx.deployVerticle(
-                    () -> new WebSocketTransport(settings, handler),
-                    new DeploymentOptions()
-                            .setInstances(settings.webSocket().instances())
-            );
-        }
     }
 
     private static void printSettings(Settings settings) {

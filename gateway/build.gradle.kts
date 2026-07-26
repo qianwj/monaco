@@ -36,7 +36,7 @@ dependencies {
     // https://mvnrepository.com/artifact/org.eclipse.collections/eclipse-collections
     implementation("org.eclipse.collections:eclipse-collections:13.0.0")
 
-    implementation(libs.metrics.prometheus)
+    implementation(libs.micrometer.prometheus)
     implementation(libs.jackson.databind)
     implementation(libs.log4j.api)
 
@@ -58,7 +58,7 @@ dependencies {
 // Apply a specific Java toolchain to ease working on different environments.
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 

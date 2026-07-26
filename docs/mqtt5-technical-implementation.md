@@ -2,7 +2,7 @@
 
 > 状态：Draft
 >
-> 更新日期：2026-07-25
+> 更新日期：2026-07-26
 >
 > 实现主线：全新模块化架构
 >
@@ -12,7 +12,7 @@
 
 本项目目标是实现一个可部署、可验证的单节点 MQTT 5.0 Broker，支持 TCP、TLS 和 WebSocket 接入，并完整处理连接、会话、发布订阅、QoS、保留消息、遗嘱、认证授权及 MQTT 5 属性。
 
-第一阶段不实现集群、桥接和跨节点共享订阅。这些能力必须通过端口预留扩展点，但不得增加单节点协议闭环的复杂度。集群通信与部署方案见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)。现有 gateway 仅作为行为与测试参考；新实现按 [MQTT 5.0 架构设计](mqtt5-architecture.md) 旁路构建，完成能力迁移后删除旧实现。
+第一阶段不实现集群、桥接和跨节点共享订阅。这些能力必须通过端口预留扩展点，但不得增加单节点协议闭环的复杂度。客户端状态的所有权、持久化记录和恢复规则见 [客户端状态设计](mqtt5-client-state-design.md)，集群通信与部署方案见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)。现有 gateway 仅作为行为与测试参考；新实现按 [MQTT 5.0 架构设计](mqtt5-architecture.md) 旁路构建，完成能力迁移后删除旧实现。
 
 ## 2. 当前实现评估
 
@@ -29,7 +29,7 @@
 | --- | --- | --- |
 | Gradle wrapper JAR 缺失，gateway mainClass 指向不存在的类 | 无法形成可重复构建和启动基线 | 提交 wrapper JAR 的忽略例外，将入口统一为 cn.elvis.monaco.Application |
 | Module.init 的依赖顺序与 SessionModule 读取顺序相反，且 EndpointHandler 未注册到 instances | Transport 无法取得有效 Handler | 使用显式构造器装配或类型化模块依赖，启动失败必须向上传播 |
-| 会话对象持有 MqttEndpoint，断线时直接从 Store 删除 | Clean Start=false、离线消息和重连恢复无法实现 | 分离瞬时 ConnectionState 与可持久化 SessionState |
+| 会话对象持有 MqttEndpoint，断线时直接从 Store 删除 | Clean Start=false、离线消息和重连恢复无法实现 | 分离 Physical/Logical ConnectionState 与可持久化 SessionRecord |
 | 时间字段混用毫秒和秒，多处过期判断方向相反 | 会话、消息和遗嘱过期错误 | 协议输入统一按秒解析，内部统一使用 Instant/Duration |
 | QoS 2 在收到 PUBREL 前已路由；出站复用发布者 Packet ID | 破坏 exactly-once，多个订阅者间冲突 | 建立入站/出站独立 Inflight 状态机和逐连接 Packet ID 分配器 |
 | 消息线程忙轮询，且 push 同时入队和直接发送 | CPU 空转、重复发送、ACK 前消息丢失 | 改为事件驱动 drain，ACK 后删除，窗口满时仅排队 |
@@ -43,34 +43,36 @@
 
     MQTT Client
          |
-    transport-reactor
-         |
-    protocol -> core
-                  |
-       +----------+-----------+----------+
+    runtime-reactor
+      transport.netty + use cases
+       |                    |
+       v                    v
+    core -> protocol    runtime ports
+                            |
+       +----------+---------+----------+
        |          |           |          |
     store-*   security    plugins   observability
 
-protocol 保存纯 MQTT 模型、校验和状态机；core 保存 Broker 用例、领域状态及出入站端口；transport-reactor、store-memory、store-rocksdb、security-default、plugin-runtime 和 observability-micrometer 都是可替换适配器；broker 是唯一依赖装配和生命周期入口。完整模块边界、依赖图和接口契约见架构设计文档。
+protocol 保存纯 MQTT 模型、校验和状态机；core 保存纯领域 command、state、transition 和 action；runtime-reactor 保存 Broker 用例、异步端口、mailbox，并内置项目唯一支持的 Reactor Netty 客户端接入。store-memory、store-rocksdb、security-default、plugin-runtime 和 observability-micrometer 是运行时端口适配器；broker 是唯一依赖装配和生命周期入口。完整模块边界、依赖图和接口契约见架构设计文档。
 
 ### 3.1 并发模型
 
 - Connection Mailbox 保证同一物理连接报文有序。
 - Session Mailbox 保证同一 clientId 的状态变更串行，不同 clientId 可并行。
 - Routing Coordinator 串行化订阅索引变更和路由快照，投递阶段按目标会话并行。
-- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，core 和运行时端口统一返回 Reactor Mono。
+- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，runtime-reactor 及其异步端口统一返回 Reactor Mono；core 保持同步纯 Java。
 - 取消当前虚拟线程 busy-poll；新消息、ACK 和窗口释放通过事件触发 drain。
 - Store 的复合操作必须原子化。内存实现使用事务锁和不可变快照，RocksDB 实现使用 WriteBatch。
 
 ## 4. 核心领域模型
 
-### 4.1 ConnectionState
+### 4.1 Physical/Logical ConnectionState
 
-仅在网络连接期间存在，包含 endpoint、clientId、认证阶段、Keep Alive timer、服务端和客户端协商限制、入站/出站 Topic Alias 表。断线后不得持久化 Endpoint。
+两者仅在网络连接期间存在。PhysicalConnectionState 位于 Ingress，包含 endpoint、Keep Alive timer 和网络写队列；LogicalConnectionState 位于 Session Owner，包含 clientId、认证阶段、协商限制和双向 Topic Alias。单机可以把两者装配在同一节点，但类型和生命周期仍保持分离。
 
-### 4.2 SessionState
+### 4.2 SessionRecord
 
-以 clientId 为主键，包含 sessionExpiryAt、订阅、Will 和当前连接代次；离线 Delivery 与入站/出站 Inflight 使用独立记录并参与同一 Store 事务。Clean Start=true 时原子清除旧会话；Clean Start=false 时恢复未过期会话并设置 Session Present。
+以 clientId 为主键，只包含 revision、sessionExpiryAt、活动连接绑定和当前连接代次等有界元数据；Subscription、Will、离线 Delivery 与入站/出站 Inflight 使用独立记录并参与同一 Shard 事务。Clean Start=true 时原子清除旧会话；Clean Start=false 时恢复未过期会话并设置 Session Present。
 
 ### 4.3 MessageRecord
 
@@ -82,7 +84,7 @@ protocol 保存纯 MQTT 模型、校验和状态机；core 保存 Broker 用例�
 
 ### 4.5 BrokerStore
 
-core 定义统一 BrokerStore 事务端口，事务视图覆盖 Session、Subscription、Message、Delivery、Inflight、Retain 和 Will。store-memory 与 store-rocksdb 通过同一套 Store 契约测试；业务层不得依赖具体存储。Topic Alias 属于 ConnectionState，不进入持久化 Store。
+runtime-reactor 定义统一 BrokerStore 事务端口，事务视图覆盖 Session、Subscription、Message、Delivery、Inflight、Retain 和 Will。store-memory 与 store-rocksdb 通过同一套 Store 契约测试；业务层不得依赖具体存储。Topic Alias 属于 LogicalConnectionState，不进入持久化 Store。
 
 ## 5. 协议处理设计
 
@@ -91,7 +93,7 @@ core 定义统一 BrokerStore 事务端口，事务视图覆盖 Session、Subscr
 1. 校验 MQTT 版本、Client ID、CONNECT Flags、属性适用范围、重复属性和取值范围。
 2. 完成基础认证；存在 Authentication Method 时进入增强认证状态机。
 3. 处理同 clientId 连接接管：向旧连接发送 Session Taken Over 后关闭旧连接。
-4. 根据 Clean Start 和 Session Expiry Interval 清理或恢复 SessionState。
+4. 根据 Clean Start 和 Session Expiry Interval 清理或恢复 SessionRecord 及相关业务记录。
 5. 协商 Receive Maximum、Maximum Packet Size、Topic Alias Maximum、Maximum QoS、Keep Alive 及可用能力。
 6. 成功持久化会话后发送 CONNACK，再启动离线队列 drain。
 
@@ -139,7 +141,7 @@ Server Keep Alive 只能由服务端在 CONNACK 中下发，不能从 CONNECT �
 - 应用 No Local、Retain As Published 和 Retain Handling。
 - 共享订阅按 $share/{group}/{filter} 建立组索引，每组每条消息只选择一个当前可接收成员；首版使用 round-robin，离线成员可按配置跳过或排队。
 
-SUBACK/UNSUBACK 必须为请求中的每个过滤器按原顺序返回 Reason Code。订阅替换应原子更新主题索引和 SessionState。
+SUBACK/UNSUBACK 必须为请求中的每个过滤器按原顺序返回 Reason Code。订阅替换应原子更新 SubscriptionRecord，提交后再更新派生主题索引。
 
 ### 5.5 保留消息
 
@@ -179,7 +181,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 
 ### 7.1 插件执行边界
 
-插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。core 只定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部接口返回 Reactor Mono。
+插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。runtime-reactor 定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部异步接口返回 Reactor Mono。
 
 - Authentication、Authorization、Connect、Publish、Subscribe 和 Will 属于持久化前的 Decision Hook，必须有超时、确定顺序和 fail-closed 结果。
 - Publish 修改后必须重新校验 Topic、Payload、Property、QoS 和配额，再执行授权与 Store 事务。
@@ -224,7 +226,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 ### P0：建立可运行基线
 
 - 修复并提交可复现的 Gradle wrapper。
-- 创建 protocol、core、store-memory、transport-reactor 和 broker 模块骨架。
+- 创建 protocol、core、runtime-reactor、store-memory 和 broker 模块骨架；将现有 transport-reactor 并入 `runtime-reactor/transport/netty` 后从 settings 删除。
 - 冻结旧 gateway 协议开发，新模块不得依赖旧模块。
 - 完成应用生命周期、动态测试端口和 Broker READY 等待机制。
 
@@ -232,7 +234,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 
 ### P1：QoS 0/1 与订阅闭环
 
-- 在 protocol/core 中实现 ConnectionState、SessionState、属性校验和错误映射。
+- 在 `runtime-reactor/transport.netty` 实现 PhysicalConnectionState，在 runtime/core 边界实现 LogicalConnectionState、SessionRecord、属性校验和错误映射；后两者不得持有 Channel 或 ByteBuf。
 - 完成普通/通配符订阅、出站 Packet ID、QoS 0/1、背压和基础 ACL。
 - 建立 plugin-api、plugin-runtime 骨架，以及认证、授权、Publish、Subscribe Hook 和提交后 Event。
 

@@ -18,6 +18,12 @@ public record TransitionResult(
         LogicalConnection connection,
         List<Action> actions
 ) {
+    private static final TransitionResult EMPTY = new TransitionResult(null, null, List.of());
+
+    public static TransitionResult empty() {
+        return EMPTY;
+    }
+
     public static TransitionResult of(SessionRecord session, LogicalConnection connection, Action... actions) {
         return new TransitionResult(session, connection, List.of(actions));
     }

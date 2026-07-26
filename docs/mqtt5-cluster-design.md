@@ -2,7 +2,7 @@
 
 > 状态：Proposed
 >
-> 更新日期：2026-07-25
+> 更新日期：2026-07-26
 >
 > 运行时方案：Reactor Core + Reactor Netty
 >
@@ -12,16 +12,16 @@
 >
 > 部署范围：Docker、Docker Compose、Docker Swarm、Kubernetes
 
-本文记录集群技术决策、协议语义与选型依据。组件关系见 [集群架构设计](mqtt5-cluster-architecture.md)，Gradle 模块、SPI 和任务拆分见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
+本文记录集群技术决策、协议语义与选型依据。组件关系见 [集群架构设计](mqtt5-cluster-architecture.md)，客户端连接、会话、QoS 和恢复状态见 [客户端状态设计](mqtt5-client-state-design.md)，RSocket route、Protobuf 报文与错误码见 [集群通信协议](mqtt5-cluster-protocol.md)，Gradle 模块、SPI 和任务拆分见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
 
 ## 1. 目标与原则
 
-Monaco 必须使用同一套 `protocol + core-domain + runtime-reactor` 同时支持单机和集群。部署平台只负责进程编排、网络和 Secret，不参与 MQTT 正确性判断。集群设计遵循以下原则：
+Monaco 必须使用同一套 `protocol + core + runtime-reactor` 同时支持单机和集群。部署平台只负责进程编排、网络和 Secret，不参与 MQTT 正确性判断。集群设计遵循以下原则：
 
 1. 运行模式由配置显式选择，不根据容器环境自动推断。
 2. Session、QoS、Will 和 Delivery 的正确性仍由状态机、Store 事务及 fencing 保证。
 3. DNS、心跳和网络连接只能表示可达性，不能单独证明节点拥有状态写权限。
-4. 节点通信使用类型化端口和 Reactor Mono，不把 EventBus address 或具体 RPC 类型暴露给 core-domain/runtime-reactor。
+4. 节点通信使用类型化端口和 Reactor Mono，不把 EventBus address 或具体 RPC 类型暴露给 core/runtime-reactor。
 5. 所有跨节点消息均允许重复，接收端依靠稳定 id 和 Store 唯一约束实现幂等。
 6. 节点失效不能导致旧 Owner 恢复后继续写入，也不能产生无界内存队列。
 
@@ -87,25 +87,25 @@ PostgreSQL 是 shared-store profile 的状态和协调基线。Broker 高可用�
 | 模块 | 职责 | 主要依赖 |
 | --- | --- | --- |
 | cluster-protocol | peer/Raft Protobuf schema、版本化 envelope 和 codec | protocol、Protobuf |
-| cluster-runtime | 成员视图、分区表、Session Dispatcher、Publication Fanout、drain | runtime-reactor、core-domain、reactor-core |
+| cluster-runtime | 成员视图、分区表、Session Dispatcher、Publication Fanout、drain | runtime-reactor、core、reactor-core |
 | cluster-transport-rsocket | peer connection、Session channels、Route channels、Lease、Resume、mTLS | cluster-runtime、cluster-protocol、RSocket |
 | cluster-coordination-postgres | 节点租约、分区 assignment、epoch 和 coordinator 选举 | cluster-runtime、PostgreSQL client |
 | store-postgres | BrokerStore 事务、Outbox、幂等约束和恢复 | runtime-reactor、cluster-runtime、PostgreSQL client |
 | cluster-consensus-ratis | Metadata/Data Raft Group、复制日志和 snapshot | cluster-runtime、cluster-protocol、Ratis |
-| store-rocksdb-sharded | ShardStateStore、WriteBatch、checkpoint 和恢复 | cluster-runtime、core-domain、RocksDB |
+| store-rocksdb-sharded | ShardStateStore、WriteBatch、checkpoint 和恢复 | cluster-runtime、core、RocksDB |
 | cluster-testkit | 集群传输、协调、存储和故障契约测试 | cluster-runtime、cluster-protocol、testkit |
 
-这些是进入集群阶段后新增的目标模块，按实施阶段逐步加入 `settings.gradle.kts`。不允许 `core-domain` 或 `runtime-reactor` 为尚未实现的传输建立反向依赖。
+这些是进入集群阶段后新增的目标模块，按实施阶段逐步加入 `settings.gradle.kts`。不允许 `core` 或 `runtime-reactor` 为尚未实现的传输建立反向依赖。
 
 依赖方向：
 
     cluster-protocol ----------------> protocol
-    cluster-runtime -----------------> runtime-reactor + core-domain
+    cluster-runtime -----------------> runtime-reactor + core
     cluster-transport-rsocket -------> cluster-runtime + cluster-protocol
     cluster-coordination-postgres ---> cluster-runtime
     store-postgres ------------------> runtime-reactor + cluster-runtime
     cluster-consensus-ratis ---------> cluster-runtime + cluster-protocol
-    store-rocksdb-sharded -----------> cluster-runtime + core-domain
+    store-rocksdb-sharded -----------> cluster-runtime + core
     broker --------------------------> cluster-runtime + selected adapters
 
 cluster-runtime 定义传输端口，唯一生产实现为 RSocket：
@@ -116,7 +116,7 @@ cluster-runtime 定义传输端口，唯一生产实现为 RSocket：
         Mono<Void> sendControl(ControlCommand command);
     }
 
-core-domain 和 runtime-reactor 不依赖 cluster-runtime。broker 在 standalone 模式注入 Local Dispatcher，在 cluster 模式注入 ClusterCommandDispatcher。
+core 和 runtime-reactor 不依赖 cluster-runtime。broker 在 standalone 模式注入 Local Dispatcher，在 cluster 模式注入 ClusterCommandDispatcher。
 
 ## 5. 节点身份、成员与 Fencing
 
@@ -143,13 +143,14 @@ DNS、Docker Service、Swarm DNSRR 和 Kubernetes Headless Service 只用于解�
 
 客户端可以连接任意 Ingress Broker，不要求负载均衡器理解 MQTT CONNECT：
 
-1. transport-reactor-netty 解码 CONNECT 并取得 clientId。
-2. ClusterSessionDispatcher 查询本地 PartitionTable 与 assignment 快照。
-3. Owner 是本节点时进入 runtime-reactor ShardProcessor；否则选择到目标节点的 Session lane。
-4. Owner 执行完整协议校验、插件 Hook、Session takeover 和 Store 事务。
-5. Owner 产生的 ServerPacket 经 Session lane 返回 Ingress，再由 transport-reactor-netty 编码发送。
+1. `runtime-reactor/transport.netty` 解码 CONNECT 并取得 clientId。
+2. clientId 为空时，Ingress 生成可在 Attach 重试中复用的 Assigned Client ID，再计算 Session Partition。
+3. ClusterSessionDispatcher 查询本地 PartitionTable 与 assignment 快照。
+4. Owner 是本节点时进入 runtime-reactor ShardProcessor；否则选择到目标节点的 Session lane。
+5. Owner 执行完整协议校验、插件 Hook、Session takeover 和 Store 事务。
+6. Owner 产生的 ServerPacket 经 Session lane 返回 Ingress，再由 `runtime-reactor/transport.netty` 编码发送。
 
-实际 Netty Channel 始终留在 Ingress。Owner 只持有逻辑 ConnectionState 和 ConnectionSink；ConnectionSink 可以是本地 transport，也可以是远程 SessionChannel，不能把 Channel、ByteBuf 或其他 Netty 对象序列化到集群协议。
+实际 Netty Channel 始终留在 Ingress。Owner 只持有 `LogicalConnectionState` 和 ConnectionSink；ConnectionSink 可以是本地 transport，也可以是远程 SessionChannel，不能把 Channel、ByteBuf 或其他 Netty 对象序列化到集群协议。
 
 节点间不为每个 MQTT 客户端创建物理连接。每对节点复用 RSocket connection，并以 request-channel 承载固定数量的逻辑 lane；connectionId 哈希选择 lane。消息包含 connectionId、connectionGeneration 和 sequence，保证同一连接有序并避免单 lane 队头阻塞。
 
@@ -161,8 +162,8 @@ Session Owner 或 lane 长时间失联时，Ingress 关闭对应 MQTT 连接，�
 
 发布流程：
 
-1. Session Owner 执行 Publish Hook、修改后校验和最终授权。
-2. MessageRecord、入站 QoS 状态和 ClusterOutbox 在一个事务中提交。
+1. Session Owner 执行 Publish Hook、修改后校验和最终授权，解析 Topic Alias 并移除连接级属性。
+2. MessageRecord、规范化 routed properties、入站 QoS 状态和 ClusterOutbox 在一个事务中提交；旧 Subscription Identifier 不跨 Shard 传播。
 3. MQTT QoS 1/2 ACK 只在事务成功后发送；ACK 表示 Broker 已承担后续路由责任。
 4. Outbox Dispatcher 将逻辑目标分区按当前节点批量发送。
 5. 接收 Owner 匹配本地订阅并幂等写入 DeliveryRecord，然后返回 RouteAck。
@@ -190,7 +191,9 @@ Shared Group Owner 保存组成员索引并执行 round-robin 或后续策略。
 
 ## 8. Peer 协议
 
-每个请求或流帧至少携带 clusterId、source node/incarnation、target node、protocolVersion、partitionId、epoch、requestId、deadline 和 trace context。Payload 使用 Protobuf，不使用 Java 原生序列化。
+本节说明交互语义；字段编号、RSocket metadata、Session/Route frame、版本兼容和限制以 [集群通信协议](mqtt5-cluster-protocol.md) 为准。
+
+每个请求或流帧至少携带 clusterId、source node/incarnation、target node、protocolVersion、requestId、timeoutMillis 和 trace context；分片请求额外携带 partitionType、partitionId、dataShardId、mappingGeneration 和 epoch。Payload 使用 Protobuf，不使用 Java 原生序列化。
 
 Peer 交互模型：
 
@@ -199,10 +202,10 @@ Peer 交互模型：
 | Handshake | request-response | 身份、版本、capabilities 和限制协商 |
 | ClusterControl | request-response | drain、assignment hint 和诊断命令 |
 | SessionLane | request-channel | 多连接复用的 ClientPacket、ServerPacket 和关闭信号 |
-| RoutePublication | request-channel | Publication batch、RouteAck 和 credit |
+| RoutePublication | request-channel | Publication batch、RouteAck 和 sequence |
 | Health | request-response/request-stream | 存活与就绪探测 |
 
-RSocket 使用 Request N 和 Lease 实施 peer 背压。每个 peer、lane 和 partition 都有并发与队列上限，队列满时任务留在 Outbox，不能在 I/O EventLoop 或堆内无限等待。公共端口只暴露 Mono/Flux，不暴露 CompletionStage。
+RSocket 使用 Request N 实施已打开 stream/channel 内的逐帧背压，Lease 只实施新 request/channel 的 peer 准入。每个 peer、lane 和 partition 都有并发与队列上限，队列满时停止追加 demand，任务留在 Outbox，不能在 I/O EventLoop 或堆内无限等待。公共端口只暴露 Mono/Flux，不暴露 CompletionStage。
 
 传输完成不是业务持久化证明。RouteAck 只能在接收端事务提交后返回，Session 命令的网络响应也必须遵守 persist-before-send。
 
@@ -241,7 +244,7 @@ gRPC 提供 Protobuf、deadline、状态码、mTLS、双向流和成熟诊断工
 
 ### 9.3 RSocket
 
-RSocket Java 基于 Reactor，request-channel、Request N、Lease 和 Resume 适合长期 Session/Route lanes 以及细粒度背压，因此作为 Reactor 集群唯一的节点数据与控制传输。
+RSocket Java 基于 Reactor；request-channel 与 Request N 适合长期 Session/Route lanes 和逐帧背压，Lease 提供新请求准入，Resume 支持短暂断线恢复，因此作为 Reactor 集群唯一的节点数据与控制传输。
 
 RSocket 不解决发现、fencing、Shard placement、持久化或脑裂。Resume 只优化短暂链路中断，不能代替 MQTT Inflight、Ratis Log 和 ClusterOutbox。Payload 继续使用带版本的 Protobuf，不把 Java 对象直接放到帧中。
 
@@ -264,17 +267,16 @@ Pekko Cluster Sharding 可以自然地把 clientId 映射为 SessionEntity，并
 
     MQTT Client
          |
-    transport-reactor-netty
-      TCP / TLS / WebSocket
-         |
     runtime-reactor
+      transport.netty (TCP / TLS / WebSocket)
+         |
       connection + shard processors
          |
          +---- RSocket ----> peer shard leaders
          +---- Ratis ------> shard replicas
          `---- RocksDB ----> applied shard state
 
-core-domain 保存同步纯函数形式的 command、state、transition 和 action，不依赖 Reactor 或 Netty。runtime-reactor 使用 Mono/Flux 编排 use case、生命周期、timeout 和 backpressure。standalone 和 cluster 复用同一运行时，只替换 Local/Remote Dispatcher 和 Store adapter。
+core 保存同步纯函数形式的 command、state、transition 和 action，不依赖 Reactor 或 Netty。runtime-reactor 使用 Mono/Flux 编排 use case、生命周期、timeout 和 backpressure。standalone 和 cluster 复用同一运行时，只替换 Local/Remote Dispatcher 和 Store adapter。
 
 运行时端口统一为 Reactor 类型：
 
@@ -293,8 +295,9 @@ Reactor Netty 通过 TcpServer/HttpServer 和 Netty ChannelPipeline 实现 MQTT 
 - TcpServer 提供 MQTT TCP 和 TLS。
 - HttpServer WebSocket route 提供 MQTT over WebSocket，并校验 mqtt subprotocol。
 - Netty MQTT encoder/decoder 只负责 wire frame；protocol 继续校验 MQTT 5 属性、Reason Code、Topic、UTF-8 和状态阶段。
-- transport-reactor-netty 把 Netty MqttMessage 转为不可变 ClientPacket，把 ServerPacket 转回 Netty message。
-- Netty ByteBuf 只能存在于 transport；进入 core-domain 前转换为有明确所有权的 Payload，禁止跨异步边界保留未 retain 的 ByteBuf。
+- `runtime-reactor` 的 `transport.netty` 包把 Netty `MqttMessage` 转为不可变 `ClientPacket`，把 `ServerPacket` 转回 Netty message。
+- Netty ByteBuf 只能存在于 transport；进入 core 前转换为有明确所有权的 Payload，禁止跨异步边界保留未 retain 的 ByteBuf。
+- Reactor Netty 与 Netty MQTT codec 必须是 `implementation` 依赖；公共 API 和其他 runtime 包不得出现 `io.netty.*`。
 
 每个连接的入站报文保持顺序：
 
@@ -304,7 +307,7 @@ Reactor Netty 通过 TcpServer/HttpServer 和 Netty ChannelPipeline 实现 MQTT 
 
 不能使用 flatMap 并发处理同一连接。连接接管后，来自不同物理连接但属于同一 clientId 的命令仍必须进入同一个 ShardProcessor。
 
-背压由四层共同实现：Reactor Netty 根据下游 demand 控制读取，MQTT 层执行 Receive Maximum，ShardProcessor 使用有界 mailbox，RSocket 使用 Request N/Lease。任何一层达到上限都必须停止读取、返回 Server Busy/Quota 结果或关闭连接，不能无限缓存。
+背压由四层共同实现：Reactor Netty 根据下游 demand 控制读取，MQTT 层执行 Receive Maximum，ShardProcessor 使用有界 mailbox，RSocket 使用 Request N 控制 stream demand，并用 Lease 控制新请求准入。任何一层达到上限都必须停止读取、返回 Server Busy/Quota 结果或关闭连接，不能无限缓存。
 
 ### 9.8 Multi-Reactor 执行模型
 
@@ -343,7 +346,7 @@ I/O worker 初始值接近可用 CPU 数，再根据连接建立速率、TLS、�
 
 因此两者在网络层都属于 multi-reactor，并都能利用多核处理大量连接。差异在编程约束：Vert.x Handler 通常由 Context 保持线程亲和性；Reactor 操作符可能在 publishOn、subscribeOn 或第三方异步回调处切换线程。实现必须显式定义调度边界，不能把 Reactor Context 当作线程或互斥机制。
 
-网络 multi-reactor 不能代替 Session 串行化。runtime-reactor 使用固定数量的单线程 Shard lanes，按 shardId 哈希选 lane；同一 lane 可以承载多个 Shard，但同一 Shard 的 command 永远串行。禁止为每个 clientId 创建线程，也禁止使用 parallel()/parallelFlux() 并发修改 SessionState。
+网络 multi-reactor 不能代替 Session 串行化。runtime-reactor 使用固定数量的单线程 Shard lanes，按 shardId 哈希选 lane；同一 lane 可以承载多个 Shard，但同一 Shard 的 command 永远串行。禁止为每个 clientId 创建线程，也禁止使用 parallel()/parallelFlux() 并发修改 SessionRecord 或相关业务记录。
 
 每个 lane 使用有界 MPSC mailbox 接收来自任意 I/O EventLoop 的命令，并由一个 Scheduler.Worker 顺序 drain。异步 Store、RSocket 或 Ratis 调用不占用 lane 线程等待；完成信号重新调度到原 lane 后才应用状态转换和处理下一条命令。mailbox 满时执行第 9.7 节的背压或拒绝策略，不能切换到无界 onBackpressureBuffer。
 
@@ -359,7 +362,7 @@ publishOn/subscribeOn 只能出现在明确的适配器边界。Ratis/RocksDB �
 
 ### 9.9 模块与插件影响
 
-全 Reactor 基础模块为 protocol、core-domain、runtime-reactor、transport-reactor-netty 和 broker；集群公共增量为 cluster-protocol、cluster-runtime、cluster-transport-rsocket 和 cluster-testkit。shared-store Profile 增加 store-postgres、cluster-coordination-postgres，replicated-store Profile 增加 cluster-consensus-ratis、store-rocksdb-sharded。完整依赖方向见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
+全 Reactor 基础模块为 protocol、core、runtime-reactor 和 broker；客户端 Reactor Netty 接入属于 runtime-reactor 内部实现。集群公共增量为 cluster-protocol、cluster-runtime、cluster-transport-rsocket 和 cluster-testkit。shared-store Profile 增加 store-postgres、cluster-coordination-postgres，replicated-store Profile 增加 cluster-consensus-ratis、store-rocksdb-sharded。完整依赖方向见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
 
 该选择还要求：
 
@@ -369,7 +372,7 @@ publishOn/subscribeOn 只能出现在明确的适配器边界。Ratis/RocksDB �
 - observability 使用 Reactor Context 传播 trace/client/session 信息，不能依赖 ThreadLocal 跨异步边界。
 - 异步测试使用 StepVerifier，网络互操作继续使用真实 MQTT 5 客户端。
 
-这是全局异步模型迁移，必须在开始实现 core-domain、runtime-reactor、plugin-api 和 transport-reactor-netty 前完成文档及模块同步。
+这是全局异步模型迁移，必须在开始实现 core、runtime-reactor 和 plugin-api 前完成文档及模块同步；客户端传输随 runtime-reactor 一并实现。
 
 ## 10. Shard Data + RocksDB 备选路线
 
@@ -421,7 +424,7 @@ Shard 架构不能支持“一个 WriteBatch 原子修改任意 Session、Retain
 
 - 单个 Session 命令只能原子修改其 Session Shard。
 - 跨 Session Delivery、Retain 更新和共享订阅选择使用持久 Outbox/Saga。
-- core-domain Transition 不能假设 MessageRecord 与所有订阅者 Delivery 在一个全局事务中完成。
+- core Transition 不能假设 MessageRecord 与所有订阅者 Delivery 在一个全局事务中完成。
 - PostgreSQL 实现即使能够执行跨表事务，也不得向 runtime-reactor 暴露更强的跨 Shard 假设。
 
 建议无论第一版选择 PostgreSQL 还是 RocksDB + Ratis，都从一开始采用 Shard-local transaction。这样共享 Store 可以作为较简单的首个实现，而不锁死未来的复制存储路线。
@@ -572,7 +575,7 @@ Peer TCP 默认启用 mTLS。证书身份绑定 clusterId 和 nodeId；Handshake
 
 ### C0：Reactor 单机基线
 
-- 创建 core-domain、runtime-reactor 和 transport-reactor-netty。
+- 保持 core 为纯领域模块，创建 runtime-reactor，将 transport-reactor 并入 `runtime-reactor/transport/netty` 后删除原模块。
 - 完成 TCP/TLS/WS、Netty MQTT codec、LoopResources、ConnectionProcessor 和 Shard lanes。
 - standalone-memory/rocksdb 使用本地 Dispatcher，协议行为与集群模式一致。
 
@@ -619,7 +622,7 @@ R1-R3 是替代 C1 中 PostgreSQL coordination/store 的复制存储路线，不
 实施前需要确认：
 
 1. 第一版选择 PostgreSQL shared-store，还是直接选择 RocksDB + Apache Ratis replicated-store。
-2. 目标节点数、连接数、消息吞吐、Payload 分布和允许的 P99 延迟，用于确定 ioWorkers、Shard lanes 和 RSocket credit。
+2. 目标节点数、连接数、消息吞吐、Payload 分布和允许的 P99 延迟，用于确定 ioWorkers、Shard lanes、Request N、Lease 和队列水位。
 3. QoS 0 是否默认进入持久 Outbox，还是允许显式配置非持久快速路径。
 4. 扩容时是否允许通过 DISCONNECT 迁移活动 Session，还是只迁移离线分区。
 5. replicated profile 的 dataShardCount、replication factor、最大 Payload 和 snapshot 目标时长。

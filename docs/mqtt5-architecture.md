@@ -2,11 +2,11 @@
 
 > 状态：Proposed
 >
-> 更新日期：2026-07-25
+> 更新日期：2026-07-26
 >
 > 架构形态：模块化单体、端口与适配器、单节点优先
 >
-> 演进说明：本文的 `core`、`transport-reactor` 是单机迁移阶段名称；进入集群 C0 前按 [集群模块详细设计](mqtt5-cluster-module-design.md) 拆为 `core-domain`、`runtime-reactor` 和 `transport-reactor-netty`。
+> 演进说明：`core` 是正式领域模块名；Reactor 用例编排位于 `runtime-reactor`。项目只支持 Reactor Netty，原 `transport-reactor` 合并到 `runtime-reactor/transport/netty` 并删除独立模块。
 
 ## 1. 架构目标
 
@@ -19,32 +19,22 @@ Monaco 需要先成为协议正确、可恢复、可测试的 MQTT 5.0 Broker，
 5. 核心正确性使用类型化调用，不依赖字符串 Channel 和无类型 EventBus 或消息总线。
 6. Gradle 模块代表代码所有权和依赖边界，不代表独立进程或微服务。
 
-第一版只交付单节点。集群、桥接和远程插件必须通过端口接入，但不能污染单节点状态机。后续单机/集群双模式、组件关系与所有权见 [集群架构设计](mqtt5-cluster-architecture.md)，通信、存储和部署选型见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)，模块与任务拆分见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
+第一版只交付单节点。集群、桥接和远程插件必须通过端口接入，但不能污染单节点状态机。客户端连接、会话、QoS、Will 和缓存的权威模型见 [客户端状态设计](mqtt5-client-state-design.md)。后续单机/集群双模式、组件关系与所有权见 [集群架构设计](mqtt5-cluster-architecture.md)，通信、存储和部署选型见 [MQTT 5.0 集群设计](mqtt5-cluster-design.md)，模块与任务拆分见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
 
 ## 2. 总体架构
 
     MQTT Client
          |
          v
-    transport-reactor
-      decode / encode
-         |
-         v
-    +-----------------------+
-    |         core          |
-    | connection + session  |
-    | publish + delivery    |
-    | subscription + retain |
-    | will + qos state      |
-    +-----------------------+
-       |       |       |
-       v       v       v
-     store   security telemetry
-     ports    ports      port
-       |       |         |
-       v       v         v
-    memory/  default   micrometer
-    rocksdb
+    runtime-reactor
+      |-- transport.netty
+      |-- Broker use cases / mailbox / transaction
+      |       `--> core: pure transitions
+      |
+      `--> runtime ports
+              |-- store-memory / store-rocksdb
+              |-- security-default / plugin-runtime
+              `-- observability-micrometer
 
 broker 是唯一 Composition Root，负责选择适配器、注入依赖和控制生命周期。所有模块最终运行在一个 JVM 中。
 
@@ -55,24 +45,24 @@ broker 是唯一 Composition Root，负责选择适配器、注入依赖和控�
 | 模块 | 核心职责 | 允许依赖 | 禁止包含 |
 | --- | --- | --- | --- |
 | protocol | MQTT 5 值对象、报文模型、属性规则、Reason Code、主题匹配、纯状态机 | Java 标准库 | Vert.x、Netty、Store、线程、网络 |
-| core | Broker 用例、领域状态、入站端口、出站端口、并发协调 | protocol、reactor-core | vertx-mqtt、Netty、具体数据库、配置文件 |
-| transport-reactor | TCP/TLS/WS 监听，Reactor Netty + Netty MQTT 编解码与 protocol 模型互转 | core、protocol、Reactor Netty、Netty MQTT codec | 会话持久化、路由业务、ACL 规则 |
-| store-memory | core 存储端口的内存实现 | core | Broker 业务判断 |
-| store-rocksdb | core 存储端口的 RocksDB 实现、编码、迁移和恢复 | core、RocksDB | 网络和协议编排 |
-| security-default | 匿名、用户名密码、文件 ACL 等默认安全实现 | core | Endpoint、数据库细节 |
+| core | command、state、transition、action 和纯领域规则 | protocol | Reactor、Netty、I/O、Store 实现 |
+| runtime-reactor | Broker 用例、事务、mailbox、运行时端口，以及唯一的 Reactor Netty TCP/TLS/WS 接入 | core、protocol、reactor-core；Reactor Netty/Netty MQTT 为内部实现依赖 | Vert.x、具体 Store、安全和插件实现 |
+| store-memory | 运行时存储端口的内存实现 | runtime-reactor | Broker 业务判断 |
+| store-rocksdb | 运行时存储端口的 RocksDB 实现、编码、迁移和恢复 | runtime-reactor、RocksDB | 网络和协议编排 |
+| security-default | 匿名、用户名密码、文件 ACL 等默认安全实现 | runtime-reactor | Endpoint、数据库细节 |
 | plugin-api | 面向第三方的稳定生命周期、Hook、Decision 和 Event DTO | protocol、reactor-core | core 内部状态、Endpoint、Store |
-| plugin-runtime | 插件发现、ClassLoader、排序、生命周期、超时和 Hook Chain | core、plugin-api | MQTT 状态机 |
+| plugin-runtime | 插件发现、ClassLoader、排序、生命周期、超时和 Hook Chain | runtime-reactor、plugin-api | MQTT 状态机 |
 | plugin-remote-grpc | 独立进程插件的 gRPC 调用、事件流和健康检查 | plugin-runtime、plugin-api、gRPC | MQTT 状态机、Store |
-| observability-micrometer | 指标端口实现、日志上下文、健康检查 | core、Micrometer | 业务状态变更 |
-| broker | 配置加载、依赖装配、启动/停止、发行包和容器镜像 | core 与所选运行时适配器 | MQTT 业务规则 |
-| testkit | Store 契约测试、协议场景 DSL、Broker 测试容器和客户端夹具 | protocol、core、store-memory | 生产运行时代码 |
+| observability-micrometer | 指标端口实现、日志上下文、健康检查 | runtime-reactor、Micrometer | 业务状态变更 |
+| broker | 配置加载、依赖装配、启动/停止、发行包和容器镜像 | runtime-reactor 与所选适配器 | MQTT 业务规则 |
+| testkit | Store 契约测试、协议场景 DSL、Broker 测试容器和客户端夹具 | protocol、runtime-reactor、store-memory | 生产运行时代码 |
 
 ### 3.1 目录结构
 
     broker/
     protocol/
     core/
-    transport-reactor/
+    runtime-reactor/
     store-memory/
     store-rocksdb/
     security-default/
@@ -94,7 +84,7 @@ logging 是独立的轻量级日志库，基于 java.util.logging 实现，作�
         "logging",
         "protocol",
         "core",
-        "transport-reactor",
+        "runtime-reactor",
         "store-memory",
         "store-rocksdb",
         "security-default",
@@ -113,26 +103,26 @@ logging 是独立的轻量级日志库，基于 java.util.logging 实现，作�
 以下箭头表示“左侧模块依赖右侧模块”：
 
     core ---------------------> protocol
+    runtime-reactor ----------> core + protocol + reactor-core
     plugin-api ---------------> protocol + reactor-core
-    transport-reactor ---------> core
-    store-memory -------------> core
-    store-rocksdb ------------> core
-    security-default ---------> core
-    observability-micrometer -> core
-    plugin-runtime -----------> core + plugin-api
+    store-memory -------------> runtime-reactor
+    store-rocksdb ------------> runtime-reactor
+    security-default ---------> runtime-reactor
+    observability-micrometer -> runtime-reactor
+    plugin-runtime -----------> runtime-reactor + plugin-api
     plugin-remote-grpc -------> plugin-runtime + plugin-api
-    broker -------------------> core + plugin-runtime + selected adapters
-    testkit ------------------> protocol + core + store-memory
+    broker -------------------> runtime-reactor + plugin-runtime + selected adapters
+    testkit ------------------> protocol + runtime-reactor + store-memory
 
-broker 位于依赖图最外层。任何适配器之间不得直接依赖，例如 transport-reactor 不能调用 store-rocksdb，security-default 不能访问 Netty Channel。testkit 只能作为 test fixture 或 testImplementation 依赖。
+broker 位于依赖图最外层。适配器之间不得直接依赖；例如 security-default 不能访问 Netty Channel。`runtime-reactor` 的用例包也不能直接调用 store-rocksdb，只能依赖 Store 端口。testkit 只能作为 test fixture 或 testImplementation 依赖。
 
 ### 3.3 包与公共 API
 
 | 模块 | 基础包 | 对外 API |
 | --- | --- | --- |
 | protocol | cn.elvis.monaco.protocol | packet、property、topic、qos、reason |
-| core | cn.elvis.monaco.core | port.in、port.out、model |
-| transport-reactor | cn.elvis.monaco.adapter.transport.reactor | ReactorTransportFactory、TransportConfig |
+| core | cn.elvis.monaco.core | command、state、transition、action |
+| runtime-reactor | cn.elvis.monaco.runtime | BrokerEngine、运行时端口、ConnectionRef、Mono/Flux；Netty 实现不对外暴露 |
 | store-memory | cn.elvis.monaco.adapter.store.memory | MemoryBrokerStore |
 | store-rocksdb | cn.elvis.monaco.adapter.store.rocksdb | RocksBrokerStore、RocksStoreConfig |
 | security-default | cn.elvis.monaco.adapter.security | DefaultSecurityFactory |
@@ -142,18 +132,18 @@ broker 位于依赖图最外层。任何适配器之间不得直接依赖，例�
 | observability-micrometer | cn.elvis.monaco.adapter.observability | MicrometerTelemetry |
 | broker | cn.elvis.monaco.broker | MonacoApplication |
 
-core 的 service、mailbox 和 coordinator 实现不作为公共 API。适配器只公开工厂、配置和端口实现，不公开内部 DTO。
+runtime-reactor 的 service、mailbox 和 coordinator 实现不作为公共 API。适配器只公开工厂、配置和端口实现，不公开内部 DTO。
 
-不能因为一个类被两个模块使用就放入 common。MQTT 语义归 protocol，Broker 状态和端口归 core，基础设施工具留在对应适配器；没有明确所有者的跨模块 utils 不允许新增。
+不能因为一个类被两个模块使用就放入 common。MQTT 语义归 protocol，纯领域状态转换归 core，运行时端口归 runtime-reactor，基础设施工具留在对应包或适配器；没有明确所有者的跨模块 utils 不允许新增。
 
 ### 3.4 构建约束
 
-build-logic 作为 Gradle included build 存放统一的 Java 21、JUnit、编译器和测试套件约定，它不是生产模块。依赖版本集中在 gradle/libs.versions.toml。
+build-logic 作为 Gradle included build 存放统一的 Java 25、JUnit、编译器和测试套件约定，它不是生产模块。依赖版本集中在 gradle/libs.versions.toml。
 
 - 库模块使用 java-library，只有稳定公共类型使用 api，其余依赖使用 implementation。
 - broker 使用 application 插件，mainClass 固定为 cn.elvis.monaco.broker.MonacoApplication。
 - testkit 通过 java-test-fixtures 暴露测试能力，不进入生产 runtimeClasspath。
-- CI 增加 dependencyBoundaries 任务：protocol 不允许 Reactor 和 Netty；core 只允许 reactor-core，不允许 Netty、RocksDB 或 Micrometer。
+- CI 增加 dependencyBoundaries 任务：protocol 和 core 不允许 Reactor 与 Netty；runtime-reactor 的非 transport 包不允许 Netty。
 - 单元测试、组件测试和端到端测试使用独立 source set，默认 check 至少运行单元和组件测试。
 - gradle-wrapper.jar 必须提交，确保全新 checkout 可直接执行构建。
 
@@ -179,15 +169,15 @@ protocol 是纯 Java 模块，负责表达 MQTT 5 语义，不负责 socket 编�
 - InboundQos2StateMachine、OutboundQosStateMachine、EnhancedAuthStateMachine。
 - PacketResponseFactory，仅生成规范允许的响应属性。
 
-状态机采用纯函数形式：State + Event -> Transition。Transition 包含新状态和待执行 Action，持久化和网络发送由 core 编排。
+状态机采用纯函数形式：State + Event -> Transition。Transition 包含新状态和待执行 Action，持久化和网络发送由 runtime-reactor 编排。
 
-## 5. core 模块
+## 5. core 与 runtime-reactor
 
-core 是 Broker 的唯一业务内核。它包含领域模型、用例实现和端口接口，但不知道适配器如何工作。
+core 是纯领域内核，只包含 command、state、transition、action 和规则。runtime-reactor 是 Broker 用例运行时，包含异步端口、事务编排、mailbox、调度和 BrokerEngine；二者都不知道外部适配器的具体实现。
 
 ### 5.1 入站端口
 
-transport-reactor 只允许通过 BrokerEngine 进入核心：
+`runtime-reactor/transport.netty` 只允许通过 `BrokerEngine` 进入用例编排，不能直接调用领域状态或 Store：
 
     interface BrokerEngine {
         Mono<Void> opened(ConnectionHandle connection);
@@ -199,7 +189,7 @@ opened 只表示物理连接建立。CONNECT 成功前不创建持久会话。re
 
 ### 5.2 出站端口
 
-core 定义、适配器实现：
+runtime-reactor 定义、适配器实现：
 
 - ConnectionSink：发送 ServerPacket、刷新、按 Reason Code 关闭连接。
 - BrokerStore：事务、启动恢复、过期数据清理。
@@ -212,15 +202,15 @@ core 定义、适配器实现：
 
 DomainEventSink 只发布事务提交后的通知。发布失败不得回滚已经完成的 MQTT 状态，也不得参与消息投递正确性。
 
-BrokerScheduler 的实现由 transport-reactor 提供并由 broker 注入；core 只保存 timer key，不持有 Vert.x timer id。
+BrokerScheduler 的实现与端口位于 runtime-reactor；core 的 action 只携带稳定 timer key，不持有 Netty EventLoop 或其他运行时句柄。
 
 ### 5.3 异步模型
 
-core 和全部运行时端口统一使用 Project Reactor 的 Mono<T> 和 Flux<T>，不再引入 CompletionStage：
+runtime-reactor 和全部运行时端口统一使用 Project Reactor 的 Mono<T> 和 Flux<T>，不再引入 CompletionStage：
 
 - 公共端口返回 Mono/Flux，不把 Promise 暴露给调用方。
 - 使用 flatMap、map、onErrorResume、doFinally 和 Mono.zip 组合流程。
-- transport-reactor 调用 core 时不做 Mono/CompletionStage 往返转换。
+- transport.netty 调用 BrokerEngine 时不做 Mono/CompletionStage 往返转换。
 - RocksDB、文件认证和远程扩展等阻塞操作通过 Schedulers.boundedElastic() 执行，再返回 Mono。
 - 失败通过 Mono.error 传播到 ProtocolErrorMapper 或生命周期管理器，禁止 block、join 和线程阻塞。
 
@@ -243,14 +233,15 @@ protocol 中的值对象、校验器和状态机仍是同步纯函数，因此 p
 
 ### 5.5 领域状态
 
-- ConnectionState：瞬时，保存认证阶段、Keep Alive、协商限制和双向 Topic Alias。
-- SessionState：持久，保存 clientId、expiryAt、订阅、Will 和连接代次。
+- PhysicalConnectionState：Ingress 瞬时状态，保存 Channel、Keep Alive timer 和网络写队列。
+- LogicalConnectionState：Session Owner 瞬时状态，保存认证阶段、协商限制和双向 Topic Alias。
+- SessionRecord：持久，只保存 clientId、revision、expiry、活动绑定和连接代次等有界元数据；Subscription、Inflight、Delivery 和 Will 使用同一 Session Shard 中的独立记录。
 - MessageRecord：Broker ULID、发布者、主题、Payload、QoS、属性和 expiryAt。
 - DeliveryRecord：目标 clientId、messageId、最终 QoS、订阅标识和排队状态。
 - InflightRecord：clientId、direction、packetId、messageId、QoS 状态和 DUP。
 - RetainedRecord：每个 Topic Name 最多一条。
 
-ConnectionState 不能持久化，Topic Alias 在每次网络连接结束时清理。SessionState 不能持有 Endpoint。
+两类 ConnectionState 都不能持久化，Topic Alias 在每次网络连接结束时清理。SessionRecord 不能持有 Endpoint。
 
 ## 6. 并发与一致性
 
@@ -306,7 +297,7 @@ StoreOperation 在一个事务视图中读写 Session、Subscription、Message�
       -> Authenticator
       -> Session Mailbox
       -> BrokerStore transaction
-      -> ConnectionState installed
+      -> LogicalConnectionState installed
       -> ConnectionSink sends CONNACK
       -> DeliveryService resumes queued/inflight messages
 
@@ -343,7 +334,7 @@ transport 将 Normal、Protocol Error、Keep Alive Timeout、Network Error 和 S
 
 ## 8. 传输适配器
 
-transport-reactor 使用 Reactor Netty 监听 TCP/TLS/WS，结合 Netty MQTT 编解码器处理协议帧。它只负责：
+`runtime-reactor` 的 `cn.elvis.monaco.runtime.transport.netty` 包使用 Reactor Netty 监听 TCP/TLS/WS，结合 Netty MQTT 编解码器处理协议帧。该包只负责：
 
 - 监听 TCP、TLS 和 WebSocket。
 - 使用 Netty MQTT codec 解码报文，映射为 protocol 模型。
@@ -352,6 +343,8 @@ transport-reactor 使用 Reactor Netty 监听 TCP/TLS/WS，结合 Netty MQTT 编
 - 将 codec、socket 和 TLS 错误转换为 DisconnectCause。
 
 所有 Handler 在注册完毕后才接受 CONNECT。Transport.start 返回 Mono，端口绑定成功前 broker 不得进入 READY。
+
+Reactor Netty 与 Netty MQTT codec 必须声明为 `implementation`。`PhysicalConnectionState`、Channel、ByteBuf 和其他 `io.netty.*` 类型只能出现在 `transport.netty` 包；runtime 公共 API 与会话状态只能暴露 protocol/core 模型、`ConnectionRef` 和 Mono/Flux。包边界测试必须阻止 Netty import 扩散。
 
 ## 9. 存储设计
 
@@ -368,14 +361,14 @@ store-memory 是所有 Store 行为的参考实现和单元测试实现。store-
 
 ## 10. 安全与插件
 
-core 只依赖 Authenticator、Authorizer 和 DomainEventSink。security-default 提供开发期匿名模式以及生产可用的哈希密码和 ACL 文件模式。
+runtime-reactor 只依赖 Authenticator、Authorizer 和 DomainEventSink 端口。security-default 提供开发期匿名模式以及生产可用的哈希密码和 ACL 文件模式。
 
 插件调用保持端口与适配器方向：
 
-    core use case
+    runtime-reactor use case
          |
          v
-    core outbound port
+    runtime outbound port
          |
          v
     plugin-runtime / Hook Chain
@@ -386,9 +379,9 @@ core 只依赖 Authenticator、Authorizer 和 DomainEventSink。security-default
                               v
                        isolated plugin process
 
-core 不依赖 plugin-api。plugin-runtime 同时依赖 core 和 plugin-api，将第三方 Hook 结果转换为 core 的认证、授权、策略和事件端口结果；broker 负责选择默认安全适配器、进程内插件和远程插件并完成装配。
+core 不依赖 plugin-api。plugin-runtime 同时依赖 runtime-reactor 和 plugin-api，将第三方 Hook 结果转换为 runtime 的认证、授权、策略和事件端口结果；broker 负责选择默认安全适配器、进程内插件和远程插件并完成装配。
 
-plugin-api 只暴露稳定 DTO，不允许插件直接访问 SessionState、BrokerStore、Endpoint 或 core Service。plugin-runtime 实现 core 的安全、策略和事件端口，负责：
+plugin-api 只暴露稳定 DTO，不允许插件直接访问 SessionRecord、SessionRuntime、BrokerStore、Endpoint 或 runtime Service。plugin-runtime 实现 runtime-reactor 的安全、策略和事件端口，负责：
 
 - 发现插件、校验 Manifest 和 API 版本，并隔离 ClassLoader。
 - 为认证、授权和拦截调用建立确定顺序、超时和失败策略。
@@ -404,7 +397,7 @@ plugin-api 只暴露稳定 DTO，不允许插件直接访问 SessionState、Brok
 
 ## 11. 可观测性
 
-BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关联字段固定为 connectionId、clientId、packetType、packetId、messageId 和 reasonCode。禁止记录密码、Authentication Data 和 Payload。
+BrokerTelemetry 位于 runtime-reactor 端口，observability-micrometer 实现。日志关联字段固定为 connectionId、clientId、packetType、packetId、messageId 和 reasonCode。禁止记录密码、Authentication Data 和 Payload。
 
 健康状态：
 
@@ -418,9 +411,10 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 | 模块 | 必须覆盖 |
 | --- | --- |
 | protocol | 属性矩阵、主题规则、Reason Code、状态机全部转换 |
-| core | 用例行为、事务顺序、Mailbox 并发、断线恢复 |
+| core | 纯 transition、领域不变量和 action 生成 |
+| runtime-reactor | 用例行为、事务顺序、Mailbox 并发、断线恢复 |
 | store-* | 同一套契约、原子性、重启恢复、schema 迁移 |
-| transport-reactor | 报文映射、启动失败传播、TCP/TLS/WS |
+| runtime-reactor/transport.netty | 报文映射、启动失败传播、TCP/TLS/WS、Netty 包边界 |
 | broker | 配置、装配、生命周期和健康状态 |
 | end-to-end | Paho/HiveMQ/Mosquitto 的 MQTT 5 互操作 |
 
@@ -434,8 +428,8 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 
 | 图中组件 | 决策 | 新架构归属 |
 | --- | --- | --- |
-| TCP Transport | 保留能力，重写适配器 | transport-reactor |
-| WebSocket Transport | 保留能力，和 TCP 复用同一 BrokerEngine | transport-reactor |
+| TCP Transport | 保留能力，重写到运行时内部 | runtime-reactor/transport.netty |
+| WebSocket Transport | 保留能力，和 TCP 复用同一 BrokerEngine | runtime-reactor/transport.netty |
 | Default/Environment/System Properties/File Settings | 保留配置来源，删除多层 Delegate 对象链 | broker 中的 BrokerConfigLoader |
 | Client Session Manager | 拆分连接态和持久会话 | ConnectionService、SessionService |
 | Publisher Manager | 拆分入站发布与目标投递 | PublishService、DeliveryService |
@@ -448,7 +442,7 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 | Retain Message Store | 保留持久化职责 | BrokerStore 的 Retained 事务视图 |
 | Will Message Store | 保留持久化职责 | BrokerStore 的 Will 事务视图 |
 | Message Store | 拆分消息本体、目标投递和 QoS 状态 | Message、Delivery、Inflight 事务视图 |
-| Topic Alias Store | 删除 | Topic Alias 放在瞬时 ConnectionState |
+| Topic Alias Store | 删除 | Topic Alias 放在瞬时 LogicalConnectionState |
 | Topics Store | 删除独立持久化 | Routing Index 由 Subscription 恢复时重建 |
 
 配置覆盖顺序统一为：启动参数或显式配置 > JVM System Properties > Environment > Config File > Default。加载完成后生成一个不可变 BrokerConfig，并在启动监听前完成集中校验。
@@ -488,9 +482,9 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 | --- | --- |
 | gateway topics、ACK、properties | 经规范测试后迁入 protocol |
 | gateway session、manager | 按用例重写到 core，不直接复制 |
-| gateway transport | 重写为 transport-reactor 适配器 |
+| gateway transport | 重写到 runtime-reactor/transport.netty |
 | gateway memory store | 按 BrokerStoreContract 重写到 store-memory |
-| common authentication | 收敛为 core 端口和 security-default |
+| common authentication | 收敛为 runtime-reactor 端口和 security-default |
 | logging | 迁移期保留，作为 Log4j2 的轻量替代 | 可选依赖 logging 替代 Log4j2 |
 | gateway 入口 | 替换为唯一 broker Composition Root |
 
@@ -498,7 +492,7 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 
 1. 保持旧模块可编译，创建 protocol、core 和 store-memory。
 2. 用纯单元测试完成 CONNECT、主题、属性与 QoS 状态机。
-3. 创建 transport-reactor 和 broker，打通内存版端到端测试。
+3. 在 runtime-reactor 内实现 transport.netty，并创建 broker，打通内存版端到端测试；随后从 settings 删除旧 transport-reactor。
 4. 完成持久会话、QoS 2、Retain、Will 后接入 RocksDB。
 5. 达到能力矩阵后删除旧 gateway/common 实现。logging 作为独立日志库保留。
 
@@ -507,11 +501,13 @@ BrokerTelemetry 位于 core 端口，observability-micrometer 实现。日志关
 ## 15. 架构验收标准
 
 1. Gradle 依赖图符合本文方向，不存在循环依赖。
-2. protocol 不依赖 Reactor；core 仅依赖 reactor-core，不出现 vertx-mqtt、Netty、RocksDB 或 Micrometer。
+2. protocol 不依赖 Reactor；core 仅依赖 protocol，不出现 Reactor、Netty、RocksDB 或 Micrometer。
 3. 使用 store-memory 可运行全部协议组件测试，替换 store-rocksdb 无需修改 core。
 4. TCP 与 WebSocket 使用同一套 BrokerEngine 和测试场景。
 5. Broker 启动、停止和监听失败通过 Mono 准确传播。
 6. 任意 QoS 1/2 中间状态重启后，Broker 能从 Store 恢复。
-7. 删除 EventBus 后不影响核心消息投递；事件系统只服务扩展和观测。
+7. settings 和 broker runtimeClasspath 中不存在独立 transport-reactor；Reactor Netty/Netty MQTT 仅是 runtime-reactor 的 implementation 依赖。
+8. 除 cn.elvis.monaco.runtime.transport.netty 外没有 io.netty.* import，公共 API 不暴露 Channel、ByteBuf 或 Netty MQTT 类型。
+9. 删除 EventBus 后不影响核心消息投递；事件系统只服务扩展和观测。
 
 协议行为与阶段计划见 [MQTT 5.0 技术实现方案](mqtt5-technical-implementation.md)。

@@ -1,4 +1,4 @@
-# core-domain 实现任务
+# core 领域层实现任务
 
 > 状态：Proposed
 >
@@ -8,13 +8,13 @@
 
 ## 1. 目标
 
-将当前 `core` 模块定位为 `core-domain`，包含 MQTT 5.0 Broker 的纯领域模型：command、state、transition、action 和业务规则。**不依赖 Reactor、Netty 或任何 I/O 框架**，只依赖 `protocol` 模块和 Java 标准库。
+`core` 是正式的 Gradle 模块名，包含 MQTT 5.0 Broker 的纯领域模型：command、state、transition、action 和业务规则。**不依赖 Reactor、Netty 或任何 I/O 框架**，只依赖 `protocol` 模块和 Java 标准库；异步用例编排位于 `runtime-reactor`。
 
 ## 2. 现状分析
 
 当前 `core` 模块内容：
 
-| 包 | 内容 | 是否属于 core-domain |
+| 包 | 内容 | 是否属于 core |
 | --- | --- | --- |
 | `config/` | BrokerConfig、Loader、Validator、TransportConfig、MetricsConfig | 是 |
 | `port/out/BrokerClock` | 纯 Java `@FunctionalInterface` | 否，迁至 runtime-reactor |

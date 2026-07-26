@@ -1,49 +1,37 @@
 package cn.elvis.monaco.runtime.handler;
 
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
-import cn.elvis.monaco.core.transition.PingReqTransition;
+import cn.elvis.monaco.core.command.SessionCommand;
+import cn.elvis.monaco.core.state.ConnectionRef;
 import cn.elvis.monaco.protocol.model.ConnectionId;
 import cn.elvis.monaco.protocol.packet.ClientPacket;
 import cn.elvis.monaco.runtime.connection.ConnectionRegistry;
 import cn.elvis.monaco.runtime.dispatch.CommandDispatcher;
 import cn.elvis.monaco.runtime.port.BrokerClock;
-import cn.elvis.monaco.runtime.store.SessionStore;
 import reactor.core.publisher.Mono;
 
 public class PacketRouter {
 
     private final ConnectionRegistry registry;
     private final CommandDispatcher dispatcher;
-    private final SessionStore sessionStore;
-    private final ActionExecutor actionExecutor;
     private final BrokerClock clock;
-    private final BrokerConfig config;
 
     private final PublishHandler publishHandler;
     private final SubscribeHandler subscribeHandler;
     private final UnsubscribeHandler unsubscribeHandler;
     private final DisconnectHandler disconnectHandler;
 
-    private final PingReqTransition pingTransition = new PingReqTransition();
-
     public PacketRouter(
             ConnectionRegistry registry,
             CommandDispatcher dispatcher,
-            SessionStore sessionStore,
-            ActionExecutor actionExecutor,
             BrokerClock clock,
-            BrokerConfig config,
             PublishHandler publishHandler,
             SubscribeHandler subscribeHandler,
             UnsubscribeHandler unsubscribeHandler,
             DisconnectHandler disconnectHandler) {
         this.registry = registry;
         this.dispatcher = dispatcher;
-        this.sessionStore = sessionStore;
-        this.actionExecutor = actionExecutor;
         this.clock = clock;
-        this.config = config;
         this.publishHandler = publishHandler;
         this.subscribeHandler = subscribeHandler;
         this.unsubscribeHandler = unsubscribeHandler;
@@ -72,18 +60,14 @@ public class PacketRouter {
     }
 
     private Mono<Void> handlePing(String clientId) {
-        return dispatcher.dispatch(clientId, cid ->
-                sessionStore.get(cid)
-                        .flatMap(session -> {
-                            var command = new Command.PingReq(cid, clock.now());
-                            var result = pingTransition.apply(command, session, null, config);
-                            return actionExecutor.execute(result);
-                        })
-        );
+        var ref = ConnectionRef.local(clientId, 0);
+        var command = new Command.PingReq(clientId, clock.now());
+        var sessionCommand = SessionCommand.of(clientId, ref, command);
+        return dispatcher.dispatch(sessionCommand).then();
     }
 
     private Mono<Void> handleAck(String clientId) {
-        return dispatcher.dispatch(clientId, cid -> Mono.empty()); // TODO: QoS ACK handling
+        return Mono.empty(); // TODO: QoS ACK handling
     }
 
     private Mono<String> resolveClientId(ConnectionId connectionId) {
