@@ -9,7 +9,7 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":transport-reactor"))
-    implementation(project(":store-memory"))
+    implementation(project(":store:memory"))
     implementation(project(":security-default"))
     implementation(project(":plugin:runtime"))
     implementation(project(":observability-micrometer"))

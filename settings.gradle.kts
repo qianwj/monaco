@@ -15,9 +15,11 @@ include(
     // 新架构模块
     "protocol",
     "core",
+    "runtime-reactor",
     "transport-reactor",
-    "store-memory",
-    "store-rocksdb",
+    "store",
+    "store:memory",
+    "store:rocksdb",
     "security-default",
     "plugin",
     "plugin:api",
