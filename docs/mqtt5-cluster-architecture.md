@@ -12,9 +12,9 @@
 
 Monaco 使用同一发行包支持单机和集群，通过配置选择运行 Profile。集群只扩展命令定位、跨节点传输和持久化方式，不复制 MQTT 状态机。
 
-1. `core` 保存同步、纯 Java 的状态转换，不依赖 Reactor、Netty、RSocket、Ratis 或数据库。
-2. `runtime-reactor` 是单机和集群共用的运行模块，包含用例编排与项目唯一的 Reactor Netty 客户端接入；公共异步 API 统一使用 `Mono`/`Flux`。
-3. `cluster-runtime` 只处理成员视图、分片定位、远程派发、Outbox 和迁移，不解释 MQTT 报文。
+1. `core` 保存同步纯 Java 的状态转换和稳定 Reactor 应用端口；只有 `core.port` 可以使用 `Mono`/`Flux`，领域包不依赖 Reactor。
+2. `runtime` 是单机和集群共用的执行内核，包含 BrokerEngine、用例编排、ShardMailbox 与项目唯一的 Reactor Netty 客户端接入。
+3. `runtime-standalone` 只提供 LocalDispatcher、本地所有权和单机 Profile；`runtime-cluster` 只处理成员视图、分片定位、远程派发、Outbox 和迁移，不解释 MQTT 报文。
 4. Reactor Netty 负责客户端 TCP/TLS/WebSocket 接入，RSocket 是 Broker 节点间唯一的数据与控制传输。
 5. `shared-store` 与 `replicated-store` 是互斥 Profile；前者以 PostgreSQL 为权威，后者以 Ratis Group 和本地 RocksDB 为权威。
 6. 所有跨节点请求均按至少一次设计，依靠稳定 ID、epoch 和持久化幂等消除重复副作用。
@@ -27,10 +27,10 @@ MQTT clients
 Load balancer / direct connection
     |
 +---------------- Monaco node ----------------+
-| runtime-reactor                              |
+| runtime                                      |
 |   transport.netty -> Broker use cases        |
 |          |                                   |
-| ClusterDispatcher -- cluster-runtime         |
+| ClusterDispatcher -- runtime-cluster         |
 |      | local             | remote            |
 |      v                   v                    |
 | ShardProcessor      RSocket peer transport --+---- peer node
@@ -63,7 +63,7 @@ Load balancer / direct connection
 | `cluster-shared-store` | Cluster | PostgreSQL lease/assignment | PostgreSQL | RSocket |
 | `cluster-replicated` | Cluster | Metadata Ratis Group | Shard Ratis Group + 本地 RocksDB | RSocket + Raft TCP |
 
-Profile 在启动时确定，运行中不能切换。业务服务只依赖端口；`broker` 根据 Profile 装配一种 `CommandDispatcher`、`ClusterCoordinator` 和 `StateStore`，不得在 `core` 或 `runtime-reactor` 中散布 Profile 条件判断。
+Profile 在启动时确定，运行中不能切换。`broker` 在单机模式装配 `runtime-standalone`，在集群模式装配 `runtime-cluster`，并选择对应 `CommandDispatcher`、`ClusterCoordinator` 和 `BrokerStore`。不得在 `core` 或共享 `runtime` 中散布 Profile 条件判断。
 
 ### 4.1 Shared-store Profile
 
@@ -73,7 +73,7 @@ PostgreSQL 同时保存 Broker 状态、Cluster Outbox、节点租约和分片 a
 
 每个数据 Shard 对应一个 Ratis Group，默认三个副本。Leader 将已提交命令按序应用到本地 RocksDB；只有多数派提交且本地 apply 完成，相关 `Mono` 才完成。失去多数派的 Shard 停止写入，不能降级后继续发送 MQTT ACK。
 
-Pekko 不与该 Profile 混用。若选择 Pekko Cluster Sharding，必须作为替换 `cluster-runtime + Ratis` 的独立 Actor 架构重新设计。
+Pekko 不与该 Profile 混用。若选择 Pekko Cluster Sharding，必须作为替换 `runtime-cluster + Ratis` 的独立 Actor 架构重新设计。
 
 ## 5. 组件边界
 
@@ -81,27 +81,27 @@ Pekko 不与该 Profile 混用。若选择 Pekko Cluster Sharding，必须作为
 
 `core` 输入 `Command + State`，输出 `Transition(newState, actions)`。它不知道命令来自本地连接还是远端节点，也不执行 I/O。
 
-`runtime-reactor` 实现 Reactor Netty MQTT 接入、Broker 用例、Connection Processor、Shard lane 和 persist-before-send 流程。客户端传输实现仅位于 `cn.elvis.monaco.runtime.transport.netty`；其 Reactor Netty、Netty MQTT codec、Channel 和 `PhysicalConnectionState` 不得进入公共 API 或其他 runtime 包。它通过以下端口访问外部能力：
+`runtime` 实现 Reactor Netty MQTT 接入、Broker 用例、Connection Processor、Shard lane 和 persist-before-send 流程。客户端传输实现仅位于 `cn.elvis.monaco.runtime.transport.netty`；其 Reactor Netty、Netty MQTT codec、Channel 和 `PhysicalConnectionState` 不得进入公共 API 或其他 runtime 包。runtime 定义由两个 Profile 实现的 `CommandDispatcher`；稳定的外部能力端口位于 `core.port`：
 
-- `CommandDispatcher`：把命令路由到本地或远端 Owner。
-- `StateStore`：事务读取、提交、恢复和 snapshot。
+- `BrokerStore`：事务读取、提交、恢复和 snapshot。
 - `ConnectionSink`：将服务端报文返回实际 Ingress。
 - `PolicyRuntime`：执行认证、授权和修改 Hook。
 - `RuntimeScheduler`：Keep Alive、Will、Session Expiry 和维护任务。
 
-### 5.2 集群运行时
+### 5.2 Profile 运行时
 
-`cluster-runtime` 持有不可变的 `ClusterView` 和 `PartitionTable` 快照，提供 Session 派发、Publication fanout、Outbox drain 和 drain/rebalance 编排。它依赖运行时端口，不依赖 RSocket、PostgreSQL、Ratis 或 RocksDB 的具体类型。
+`runtime-standalone` 实现 LocalDispatcher 和本地分片所有权，不依赖任何集群模块。`runtime-cluster` 持有不可变的 `ClusterView` 和 `PartitionTable` 快照，提供 Session 派发、Publication fanout、Outbox drain 和 drain/rebalance 编排。两个模块都依赖共享 `runtime`，互不依赖；runtime-cluster 不依赖 RSocket、PostgreSQL、Ratis 或 RocksDB 的具体类型。
 
 ### 5.3 基础设施适配器
 
 - `cluster-transport-rsocket` 实现 peer handshake、Session/Route channel、Lease、Resume 和 mTLS。
 - `cluster-coordination-postgres` 实现 shared-store 的 lease、assignment、epoch 和 coordinator election。
 - `cluster-consensus-ratis` 实现 replicated-store 的 Metadata/Data Raft Group、成员变更和 snapshot install。
-- `store-postgres` 实现共享事务、唯一约束和 Outbox。
+- `store-postgres` 实现 core BrokerStore、共享状态事务、唯一约束，并在同一事务原子写入 Outbox 行。
+- `cluster-outbox-postgres` 实现 runtime-cluster 的 Outbox claim、ack、retry 和 drain 端口；它复用 Outbox schema，但不参与 MQTT 状态写入。
 - `store-rocksdb-sharded` 实现 shard-local WriteBatch、checkpoint、schema 和 snapshot。
 
-适配器之间不直接调用。RSocket 不能访问 RocksDB，PostgreSQL coordination 不能操作 Netty Channel，Ratis adapter 只能通过 `cluster-runtime` 定义的 apply/snapshot 端口访问状态机。
+适配器之间不直接调用。RSocket 不能访问 RocksDB，PostgreSQL coordination 不能操作 Netty Channel，Ratis adapter 只能通过 `runtime-cluster` 定义的 apply/snapshot 端口访问状态机。
 
 ## 6. 分片与所有权
 
@@ -136,8 +136,8 @@ Ingress: assign stable clientId when CONNECT clientId is empty
 Ingress -> ClusterDispatcher: sessionShard(clientId)
 ClusterDispatcher -> Owner SessionLane: command(epoch, generation, sequence)
 Owner -> PolicyRuntime: authenticate/authorize
-Owner -> StateStore: takeover + session transaction
-StateStore -> Owner: committed
+Owner -> BrokerStore: takeover + session transaction
+BrokerStore -> Owner: committed
 Owner -> Ingress: CONNACK / close previous connection
 Ingress -> Client: CONNACK
 ```
@@ -211,9 +211,9 @@ Peer 和 Raft 端口默认使用 mTLS，证书身份绑定 `clusterId + nodeId`�
 
 ## 12. 架构约束与验收
 
-1. 单机和集群复用同一 `core` 与 `runtime-reactor`，不维护两套 MQTT 状态机。
+1. 单机和集群复用同一 `core` 与 `runtime`，不维护两套 MQTT 状态机、Handler 或客户端接入。
 2. 生产 runtimeClasspath 不包含 Vert.x；公共异步端口不出现 `Future` 或 `CompletionStage`。
-3. `cluster-runtime` 不依赖任何传输、数据库或共识实现。
+3. `runtime-cluster` 不依赖任何传输、数据库或共识实现；`runtime-standalone` 与 `runtime-cluster` 互不依赖。
 4. shared-store 与 replicated-store 可独立装配、构建和测试，不在同一进程同时启用。
 5. 旧 epoch、旧 incarnation 和非 Leader 写入在持久化边界被拒绝。
 6. QoS 1/2 ACK、RouteAck 和 Session 成功响应都发生在规定提交点之后。

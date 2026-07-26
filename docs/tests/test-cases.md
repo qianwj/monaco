@@ -16,7 +16,7 @@
 | `PR` | protocol 纯规则和值对象 |
 | `ST` | BrokerStore 契约 |
 | `CO` | core 组件场景 |
-| `TR` | runtime-reactor 的 transport.netty 接入层 |
+| `TR` | runtime 的 transport.netty 接入层 |
 | `BR` | broker 装配和生命周期 |
 | `E2E` | 单机 MQTT 端到端 |
 | `PL` | 插件系统 |
@@ -37,7 +37,7 @@
 - Broker Listener 使用端口 `0`，fixture 等待 `READY` 后才返回。
 - 组件测试使用确定性 Clock/Scheduler，不调用 `Thread.sleep`。
 - 每个 case 结束后断言无未消费异步错误、无资源泄漏；失败输出统一 Trace。
-- 表中的“提交”指 `BrokerStore.transact` 成功完成，不是仅执行了事务回调。
+- 表中的“提交”指 `BrokerStore.commit(StoreCommit)` 成功完成，不是仅构造了 MutationBatch。
 
 ## 2. Testkit 自测试
 
@@ -333,7 +333,7 @@ Memory 和单机 RocksDB 都继承同一 `BrokerStoreContract`。`ST-014` 以后
 
 | ID | 层级/阶段 | Given / When | Then |
 | --- | --- | --- | --- |
-| CL-001 | contract/C3 | RSocket/gRPC Peer 使用相同 Handshake 输入 | clusterId、node/incarnation、version、capability 校验语义一致 |
+| CL-001 | contract/C3 | RSocket Peer 建立 Handshake | clusterId、node/incarnation、version、capability 校验正确，不兼容节点被拒绝 |
 | CL-002 | contract/C3 | 同 connection 的 Session commands 并发进入多个 lane | 按 sequence 严格交付，重复 sequence 幂等，缺口不乱序执行 |
 | CL-003 | contract/C3 | Peer deadline 到期后迟到响应 | 调用只完成一次；重试保持 requestId，不生成新业务 ID |
 | CL-004 | contract/C3 | Route channel downstream 不 request | 上游尊重背压，lane/heap 队列不超过配置上限 |

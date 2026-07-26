@@ -1,9 +1,11 @@
 package cn.elvis.monaco.testkit.time;
 
+import cn.elvis.monaco.core.port.IdGenerator;
+
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
-public final class SequenceIdGenerator {
+public final class SequenceIdGenerator implements IdGenerator {
 
     private final String prefix;
     private final AtomicLong next;
@@ -20,6 +22,7 @@ public final class SequenceIdGenerator {
         this.next = new AtomicLong(firstValue);
     }
 
+    @Override
     public String nextId() {
         long value = next.getAndUpdate(Math::incrementExact);
         return prefix + value;

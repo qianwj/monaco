@@ -2,11 +2,13 @@
 
 > 状态：Proposed
 >
-> 更新日期：2026-07-25
+> 更新日期：2026-07-26
 >
-> 异步模型：Vert.x Future
+> 异步模型：Reactor Mono/Flux
 >
-> 适用范围：单节点 Broker，预留远程插件
+> 适用范围：单机与集群 Broker，预留远程插件
+>
+> 模块落地：[plugin-api 与 plugin-runtime 实现任务](modules/plugin.md)
 
 ## 1. 目标与边界
 
@@ -15,7 +17,7 @@
 1. 插件 API 稳定，不暴露 MqttEndpoint、SessionState、BrokerStore 或 core 实现类。
 2. 插件失败、超时和卸载不能破坏 MQTT QoS 状态机。
 3. 影响协议结果的 Hook 与事务提交后的 Event 使用不同执行语义。
-4. 插件调用全程使用 Vert.x Future，不阻塞 Event Loop。
+4. 插件调用全程使用 Reactor Mono/Flux，不阻塞 Reactor Netty EventLoop。
 5. 可信插件可进程内运行；不可信或跨语言插件使用独立进程。
 6. 决策 Hook 必须可重复调用且不产生不可逆副作用；外部通知只能消费提交后的 Event。
 
@@ -25,7 +27,7 @@
 
 | 模块 | 职责 | 依赖 |
 | --- | --- | --- |
-| plugin-api | 插件生命周期、Hook 接口、不可变 DTO、Decision 和 Event | protocol、vertx-core |
+| plugin-api | 插件生命周期、Hook 接口、不可变 DTO、Decision 和 Event | protocol、reactor-core |
 | plugin-runtime | JAR 发现、Manifest、ClassLoader、依赖排序、Hook Chain、超时、隔离和指标 | core、plugin-api |
 | plugin-remote-grpc | gRPC 握手、远程 Hook 调用、事件流、健康检查和重连 | plugin-api、plugin-runtime、gRPC/Protobuf |
 | testkit | PluginHarness、模拟上下文、顺序/超时/兼容性契约测试 | plugin-api、plugin-runtime |
@@ -34,7 +36,7 @@ core 不依赖 plugin-api。core 只定义 Authenticator、Authorizer、PolicyIn
 
 依赖方向：
 
-    plugin-api ----------> protocol + vertx-core
+    plugin-api ----------> protocol + reactor-core
     plugin-runtime ------> core + plugin-api
     plugin-remote-grpc --> plugin-runtime + plugin-api
     broker -------------> plugin-runtime + optional remote adapter
@@ -57,11 +59,11 @@ core 不依赖 plugin-api。core 只定义 Authenticator、Authorizer、PolicyIn
 plugin-runtime 定义两个内部 SPI，远程模块只实现 SPI，不把 gRPC 依赖带入基础运行时：
 
     interface PluginSource {
-        Future<List<PluginHandle>> load();
+        Flux<PluginHandle> load();
     }
 
     interface PluginInvoker {
-        <R> Future<R> invoke(HookInvocation<R> invocation);
+        <R> Mono<R> invoke(HookInvocation<R> invocation);
     }
 
 ServiceLoaderSource 是 plugin-runtime 的内置实现；GrpcPluginSource 位于 plugin-remote-grpc，由 broker 通过 PluginRuntimeBuilder 注入。两种来源都归一化为包含 descriptor、hooks 和 invoker 的 PluginHandle。HookRegistry 只处理 PluginHandle，因而本地和远程插件共享排序、Chain budget、结果校验、失败策略、指标和 core 端口适配逻辑。
@@ -84,21 +86,26 @@ plugin.yaml 至少包含：
     name: File ACL
     version: 1.0.0
     apiVersion: 1
-    priority: 100
-    required: true
     dependencies: []
     capabilities:
       - authentication
       - authorization
-    timeout:
-      decisionMs: 100
-      eventMs: 500
-    execution:
-      mode: worker
-      maxConcurrency: 16
-      maxQueueSize: 1024
 
-id 在一个 Broker 实例内唯一且不可在运行时变化。apiVersion 不兼容、依赖缺失、依赖成环或 Manifest 非法时禁止加载。
+`required`、priority、timeout、并发、队列和失败策略由 Broker 部署配置声明，例如：
+
+    plugins:
+      acl-file:
+        enabled: true
+        required: true
+        priority: 100
+        timeout:
+          decisionMs: 100
+          eventMs: 500
+        execution:
+          maxConcurrency: 16
+          maxQueueSize: 1024
+
+id 在一个 Broker 实例内唯一且不可在运行时变化。apiVersion 不兼容、依赖缺失、依赖成环或 Manifest 非法时禁止加载。插件包不能自行把自己声明为 required 或放宽安全 Hook 的失败策略。
 
 plugin.jar 必须包含 Java Service Provider 配置：
 
@@ -106,11 +113,11 @@ plugin.jar 必须包含 Java Service Provider 配置：
 
 该文件只声明一个 MonacoPluginFactory 实现。plugin-runtime 为每个插件目录创建独立 ClassLoader，再调用 ServiceLoader.load(MonacoPluginFactory.class, pluginClassLoader)。未发现 Provider、发现多个 Provider、Provider 来自父 ClassLoader 或 Provider 与 Manifest capabilities 不一致时拒绝加载。
 
-ServiceLoader 只负责本地插件实例化，不负责扫描目录、读取配置、依赖排序或生命周期。Manifest 是 id、版本、能力和运行参数的唯一来源；不再提供 mainClass 反射入口，避免两套加载规则产生歧义。
+ServiceLoader 只负责本地插件实例化，不负责扫描目录、读取配置、依赖排序或生命周期。Manifest 是 id、版本、API 和能力的唯一来源，Broker 配置是 required、顺序和资源预算的唯一来源；不再提供 mainClass 反射入口，避免两套加载规则产生歧义。
 
 插件配置位于其命名空间下。密码、Token 和私钥只允许通过环境变量或 Secret 文件引用，不直接写入 plugin.yaml。
 
-第三方进程内插件默认使用 worker 模式。event-loop 模式只允许 Broker 内置且经过阻塞检测的插件使用；队列或并发配额耗尽时，按对应 Hook 的失败策略立即返回，不能无限排队。
+第三方进程内插件统一使用每插件有界 Scheduler，不提供可配置的 event-loop 模式。队列或并发配额耗尽时，按对应 Hook 的失败策略立即返回，不能无限排队。
 
 ## 4. API 模型
 
@@ -123,9 +130,9 @@ ServiceLoader 只负责本地插件实例化，不负责扫描目录、读取配
     }
 
     interface MonacoPlugin {
-        Future<Void> start(PluginContext context);
+        Mono<Void> start(PluginContext context);
         List<PluginHook> hooks();
-        Future<Void> stop();
+        Mono<Void> stop();
     }
 
 Factory 必须具有无参构造器，构造器和 create 不得执行文件、网络或其他阻塞操作；资源初始化统一放在 start 中。hooks 必须能在 start 前调用并返回静态、不可变列表。Manifest capabilities 必须与 hooks 返回的扩展点完全一致，多报或少报均视为加载错误。
@@ -134,7 +141,7 @@ PluginContext 只提供：
 
 - 插件自身的只读配置。
 - 带插件 id 的 Logger 和 Metrics。
-- Vertx、BrokerClock 和受限 Scheduler。
+- 只读 PluginClock 和受限 PluginScheduler。
 - Broker 版本、Plugin API 版本和节点 id。
 
 PluginContext 不提供 BrokerStore、Endpoint、RoutingService 或任意 core Service。第一版不提供可重入的 BrokerFacade；插件不能在 Hook 中直接再次调用 publish 或 disconnect。
@@ -221,7 +228,7 @@ Domain Event 是有界、best-effort 的扩展通知：Broker 在提交后崩溃
       -> CONNACK
       -> SessionConnected event
 
-认证 Provider 使用 first-applicable：按顺序遇到 Success 或 Reject 即停止；全部 Abstain 时使用 security-default 的默认策略。
+认证 Provider 使用 first-applicable：按顺序遇到 Success 或 Reject 即停止；全部 Abstain 时使用 auth:simple 的默认策略。
 
 Enhanced Authentication 首轮返回 Continue 后，connectionId、Authentication Method 和 provider pluginId 必须绑定到认证交换状态；后续 AUTH 只回调同一个 Provider，不能重新执行整条认证 Chain。连接关闭、认证成功或失败时立即销毁该状态。
 
@@ -297,7 +304,7 @@ Broker 对已生成 MessageRecord 的 Retain replay、离线投递、出站 DUP 
 - Hook 在发起请求的 Connection/Session Mailbox 中异步串联，但不得阻塞线程。
 - 插件实例默认必须线程安全，因为不同 clientId 会并行调用。
 - plugin-runtime 不允许一个 Hook 同步等待 Broker 的另一个 Mailbox。
-- 第三方进程内 Hook 由每插件有界 WorkerExecutor 调用，完成结果以 Future 回到原 Vert.x Context；不能直接占用 Event Loop。
+- 第三方进程内 Hook 通过每插件有界 Scheduler 调用；runtime adapter 在应用结果前切回原 Shard lane，插件不能直接占用 Reactor Netty EventLoop。
 - Payload 默认只读；插件声明 publish-payload capability 后才接收 Payload。
 - 插件不能在对象字段中保存 Endpoint、SessionState 或请求级 Buffer 引用。
 - 插件自己的持久数据由插件管理，不能使用 BrokerStore 的 Column Family。
@@ -331,9 +338,9 @@ Broker 对已生成 MessageRecord 的 Retain replay、离线投递、出站 DUP 
 
 ### 10.1 进程内插件
 
-每个插件使用独立 ClassLoader。JDK、plugin-api、protocol 和 vertx-core 使用 parent-first；插件私有依赖使用 child-first，避免插件之间依赖冲突。ServiceLoader 必须显式使用该插件的 ClassLoader，不能扫描 Broker 全局 classpath；运行时同时校验 Provider 的 defining ClassLoader，防止父级 Provider 混入。
+每个插件使用独立 ClassLoader。JDK、plugin-api、protocol 和 reactor-core 使用 parent-first；插件私有依赖使用 child-first，避免插件之间依赖冲突。ServiceLoader 必须显式使用该插件的 ClassLoader，不能扫描 Broker 全局 classpath；运行时同时校验 Provider 的 defining ClassLoader，防止父级 Provider 混入。
 
-Java 21 已没有可依赖的 SecurityManager 沙箱。进程内插件拥有与 Broker 相同的 OS 权限，只能安装可信代码。ClassLoader 解决依赖隔离，不解决恶意代码、System.exit、无限内存或本地文件访问。
+Java 25 没有可依赖的 SecurityManager 沙箱。进程内插件拥有与 Broker 相同的 OS 权限，只能安装可信代码。ClassLoader 解决依赖隔离，不解决恶意代码、System.exit、无限内存或本地文件访问。
 
 ### 10.2 远程插件
 
@@ -347,7 +354,7 @@ Java 21 已没有可依赖的 SecurityManager 沙箱。进程内插件拥有与 
 
 同一主机默认使用 gRPC over Unix Domain Socket，例如 unix:///run/monaco/plugins/acl.sock。Socket 放在 Broker 与插件专用的运行目录，通过目录和文件权限限制访问，不使用公共临时目录。生产环境由 systemd、容器或其他 supervisor 启动插件进程并管理 Socket；required 插件在启动 deadline 内未完成 Handshake 时，Broker 不进入 READY。
 
-跨主机使用 mTLS TCP。本地开发环境缺少 Netty epoll/kqueue native transport 时，也可以回退到 loopback mTLS TCP。gRPC callback 通过 Vert.x Promise 转换为 Future，公共 API 不暴露 CompletionStage。
+跨主机使用 mTLS TCP。本地开发环境缺少 Netty epoll/kqueue native transport 时，也可以回退到 loopback mTLS TCP。gRPC adapter 使用 `Mono.create` 封装 callback，公共 API 不暴露 stub 或 CompletionStage。
 
 gRPC 是默认远程协议，因为契约、跨语言生成和诊断工具成熟。只有事件吞吐证明需要消息级 Request N 和 Resume 时，再实现 RSocket transport；两者复用 plugin-api 语义。
 
@@ -390,7 +397,7 @@ ServiceLoader 和 Unix Domain Socket 不处于同一层：前者负责 JVM 内�
 testkit 提供 PluginHarness：
 
 - 构造 Connect、Publish、Subscribe 和 Event 上下文。
-- 使用虚拟 BrokerClock/Scheduler 验证 timeout。
+- 使用虚拟 PluginClock/PluginScheduler 验证 timeout。
 - 验证依赖排序、优先级、first-applicable 和 deny-overrides。
 - 验证修改后重新校验和 Reason Code 映射。
 - 验证 Event 队列溢出不影响 MQTT 主链路。

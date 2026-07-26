@@ -41,8 +41,8 @@ class ManualBrokerSchedulerTest {
         scheduler.schedule("replace", Duration.ZERO, record(calls, "new"));
         scheduler.schedule("cancel", Duration.ZERO, record(calls, "cancelled"));
 
-        assertTrue(scheduler.cancel("cancel"));
-        assertFalse(scheduler.cancel("cancel"));
+        assertTrue(scheduler.cancelNow("cancel"));
+        assertFalse(scheduler.cancelNow("cancel"));
         StepVerifier.create(scheduler.runDueTasks()).verifyComplete();
 
         assertEquals(List.of("new"), calls);
@@ -101,6 +101,28 @@ class ManualBrokerSchedulerTest {
                 () -> scheduler.schedule("task", Duration.ofSeconds(-1), Mono::empty));
         assertThrows(IllegalArgumentException.class,
                 () -> new ManualBrokerScheduler(clock(), 0));
+    }
+
+    @Test
+    void implementsLazySchedulerPortOperations() {
+        MutableBrokerClock clock = clock();
+        ManualBrokerScheduler scheduler = new ManualBrokerScheduler(clock);
+        List<String> calls = new ArrayList<>();
+
+        Mono<Void> schedule = scheduler.schedule(
+                "port-task", Duration.ZERO, () -> calls.add("ran"));
+        assertEquals(0, scheduler.pendingTaskCount());
+
+        StepVerifier.create(schedule).verifyComplete();
+        assertEquals(1, scheduler.pendingTaskCount());
+        StepVerifier.create(scheduler.runDueTasks()).verifyComplete();
+        assertEquals(List.of("ran"), calls);
+
+        StepVerifier.create(scheduler.schedule(
+                "cancelled", Duration.ZERO, () -> calls.add("cancelled"))).verifyComplete();
+        StepVerifier.create(scheduler.cancel("cancelled")).verifyComplete();
+        StepVerifier.create(scheduler.runDueTasks()).verifyComplete();
+        assertEquals(List.of("ran"), calls);
     }
 
     @Test

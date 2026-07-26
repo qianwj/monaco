@@ -30,7 +30,7 @@ testkit 为 Monaco 各模块提供可复用、确定性、与生产运行时隔�
 
 ## 2. 当前基线与待统一项
 
-当前 `testkit/` 已完成 Gradle test fixtures 隔离，以及确定性 Clock/Scheduler/ID、Probe/Trace、FaultPlan/Gate 和公共断言的第一批实现与自测试。`protocol` 的 P0 值对象、报文、属性、Topic Validator/Matcher 已有实现，Property Schema 和 QoS/AUTH 状态机仍待后续阶段完成；Core 的 Clock/Scheduler/ID、BrokerStore 和出站端口尚未冻结。因此现有基础类暂不实现 Core 接口，待生产端口落地后机械适配；Recording、Store Fixture/Contract 和故障端口包装器继续按阶段实施，不在 testkit 中预定义生产占位接口。
+当前 `testkit/` 已完成 Gradle test fixtures 隔离、确定性 Clock/Scheduler/ID、Probe/Trace、FaultPlan/Gate、公共断言、FixtureResourceRegistry 和第一版 PacketBuilders，并具备对应自测试。`protocol` 的 P0 值对象、客户端报文和属性已足够支持显式 Packet Builder；Property Schema 和 QoS/AUTH 状态机仍待后续阶段完成。Core 已提供状态 record 及过渡期的细粒度 Store/StateTransaction 接口，但同版本架构评审要求它们收敛为真正原子的 `BrokerStore`，Clock/Scheduler/ID 和出站端口也尚未冻结。因此 testkit 不绑定过渡 Store 接口；Recording、Store Fixture/Contract 和故障端口包装器等待稳定生产端口后实施。
 
 实现前需要统一三处文档差异：
 
@@ -38,7 +38,7 @@ testkit 为 Monaco 各模块提供可复用、确定性、与生产运行时隔�
 | --- | --- | --- |
 | D-01 | 仓库指南和 `mqtt5-architecture.md` 写 Java 21，当前新模块构建脚本写 Java 25 | testkit 不硬编码独立版本，统一继承根构建约定；P0 开始前由项目级决策确定 toolchain |
 | D-02 | `plugin-system.md` 示例使用 Vert.x `Future`/`Vertx`，新架构公共异步端口要求 Reactor `Mono`/`Flux` 且生产运行时移除 Vert.x | `PluginHarness` 按 plugin-api 最终冻结的 Reactor API 实现；冻结前不提交兼容 Vert.x 的双栈测试 API |
-| D-03 | `core` 是正式领域模块名；客户端接入合并到 `runtime-reactor/transport.netty` | testkit 只为 `runtime-reactor` 提供一套 Engine/Transport Harness；旧 transport 模块删除后不保留双套 Harness |
+| D-03 | core 承接 Reactor 端口；客户端接入合并到 `runtime/transport.netty`；Profile 拆为 standalone/cluster | testkit 只为共享 runtime 提供一套 Engine/Transport Harness，Profile provider 分别位于 runtime-standalone 与 runtime-cluster |
 
 以上差异不阻塞 P0 的 Store Contract、Clock、Probe 和断言工具设计。
 
@@ -180,7 +180,7 @@ cluster-testkit
 └── NetworkFaultController
 ```
 
-`cluster-testkit` 依赖 `cluster-runtime`、`cluster-protocol` 和基础 `testkit`；基础 testkit 不反向依赖任何集群模块。
+`cluster-testkit` 依赖 `runtime-cluster`、`cluster-protocol` 和基础 `testkit`；基础 testkit 不反向依赖任何集群模块。
 
 C1 的 in-memory coordinator/peer 只验证确定性路由与端口语义。PostgreSQL、RSocket 和 Ratis 的多节点 integration/recovery case 必须使用独立 JVM 或 Testcontainers，不能在同一对象图中伪造多个生产节点身份。
 
@@ -441,7 +441,7 @@ dependencies {
 - `store-memory` 和 `store-rocksdb` 分别在测试配置消费 testkit，不由 testkit 反向依赖。
 - 插件和 Broker 的具体 launcher/provider 放在拥有模块的测试代码中。
 - P3 增加 `testFixturesApi(project(":plugin-api"))`。
-- C1 创建独立 `cluster-testkit`，其 test fixtures 依赖 `cluster-runtime`、`cluster-protocol` 和 `testFixtures(project(":testkit"))`；基础 testkit 不增加集群依赖。
+- C1 创建独立 `cluster-testkit`，其 test fixtures 依赖 `runtime-cluster`、`cluster-protocol` 和 `testFixtures(project(":testkit"))`；基础 testkit 不增加集群依赖。
 
 建议测试任务：
 
@@ -552,7 +552,7 @@ testkit 自身必须测试：
 - C5：`ReplicatedLogContract`、`ShardStateStoreContract`、Raft commit/apply/snapshot 故障矩阵。
 - C6：网络分区、磁盘满、长稳、容量和证书轮换。
 
-退出标准：测试不使用 `sleep` 判断稳定；相同 Peer 契约可验证 RSocket 和 optional gRPC；shared-store 与 replicated-store 通过同一 `ClusterProfileContract` 和 MQTT 行为集；旧 epoch 在持久化边界必然被拒绝。
+退出标准：测试不使用 `sleep` 判断稳定；唯一 RSocket Peer 实现通过完整 `PeerTransportContract`；shared-store 与 replicated-store 通过同一 `ClusterProfileContract` 和 MQTT 行为集；旧 epoch 在持久化边界必然被拒绝。
 
 ## 10. 验收标准
 

@@ -1,5 +1,6 @@
 package cn.elvis.monaco.testkit.time;
 
+import cn.elvis.monaco.core.port.BrokerScheduler;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -13,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-public final class ManualBrokerScheduler {
+public final class ManualBrokerScheduler implements BrokerScheduler {
 
     private static final int DEFAULT_MAX_CASCADE_TASKS = 10_000;
 
@@ -56,7 +57,13 @@ public final class ManualBrokerScheduler {
         tasks.add(task);
     }
 
-    public synchronized boolean cancel(String key) {
+    @Override
+    public Mono<Void> schedule(String key, Duration delay, Runnable task) {
+        Objects.requireNonNull(task, "task");
+        return Mono.fromRunnable(() -> schedule(key, delay, () -> Mono.fromRunnable(task)));
+    }
+
+    public synchronized boolean cancelNow(String key) {
         Objects.requireNonNull(key, "key");
         ScheduledTask removed = tasksByKey.remove(key);
         if (removed != null) {
@@ -64,6 +71,11 @@ public final class ManualBrokerScheduler {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public Mono<Void> cancel(String key) {
+        return Mono.fromRunnable(() -> cancelNow(key));
     }
 
     public synchronized int pendingTaskCount() {

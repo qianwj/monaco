@@ -4,9 +4,10 @@ import cn.elvis.monaco.core.command.Command;
 import cn.elvis.monaco.core.command.CommandResult;
 import cn.elvis.monaco.core.command.SessionCommand;
 import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.port.BrokerStore;
+import cn.elvis.monaco.core.port.ShardSnapshot;
 import cn.elvis.monaco.core.state.SessionRecord;
 import cn.elvis.monaco.core.transition.*;
-import cn.elvis.monaco.core.store.SessionStore;
 import reactor.core.publisher.Mono;
 
 import java.util.function.Function;
@@ -14,12 +15,12 @@ import java.util.function.Function;
 /**
  * Central command processor — the execution function given to LocalDispatcher.
  * <p>
- * Routes each SessionCommand to the appropriate Transition, loads session state,
- * applies the transition, and executes the resulting actions.
+ * Loads shard state from BrokerStore, applies the domain transition,
+ * then delegates to ActionExecutor for atomic persist + effect execution.
  */
 public class CommandProcessor implements Function<SessionCommand, Mono<CommandResult>> {
 
-    private final SessionStore sessionStore;
+    private final BrokerStore brokerStore;
     private final ActionExecutor actionExecutor;
     private final BrokerConfig config;
 
@@ -30,10 +31,10 @@ public class CommandProcessor implements Function<SessionCommand, Mono<CommandRe
     private final UnsubscribeTransition unsubscribeTransition = new UnsubscribeTransition();
     private final PingReqTransition pingTransition = new PingReqTransition();
 
-    public CommandProcessor(SessionStore sessionStore,
+    public CommandProcessor(BrokerStore brokerStore,
                             ActionExecutor actionExecutor,
                             BrokerConfig config) {
-        this.sessionStore = sessionStore;
+        this.brokerStore = brokerStore;
         this.actionExecutor = actionExecutor;
         this.config = config;
     }
@@ -43,27 +44,28 @@ public class CommandProcessor implements Function<SessionCommand, Mono<CommandRe
         var command = sessionCommand.command();
         var clientId = sessionCommand.clientId();
 
-        return sessionStore.get(clientId)
-                .flatMap(session -> {
-                    var result = applyTransition(command, session);
-                    return actionExecutor.execute(result)
-                            .thenReturn((CommandResult) new CommandResult.Success(result));
-                })
-                .switchIfEmpty(Mono.defer(() -> {
-                    // No existing session — only CONNECT is valid without one
-                    if (command instanceof Command.Connect) {
-                        var result = applyTransition(command, null);
-                        return actionExecutor.execute(result)
-                                .thenReturn(new CommandResult.Success(result));
-                    }
-                    return Mono.just(new CommandResult.Rejected(
-                            CommandResult.RejectReason.SESSION_NOT_FOUND,
-                            "No session for clientId: " + clientId));
-                }));
+        return brokerStore.load(clientId)
+                .flatMap(snapshot -> processCommand(clientId, command, snapshot));
     }
 
-    private TransitionResult applyTransition(
-            Command command, SessionRecord session) {
+    private Mono<CommandResult> processCommand(String clientId, Command command, ShardSnapshot snapshot) {
+        var session = snapshot.session();
+
+        // Only CONNECT is valid without an existing session
+        if (session == null && !(command instanceof Command.Connect)) {
+            return Mono.just(new CommandResult.Rejected(
+                    CommandResult.RejectReason.SESSION_NOT_FOUND,
+                    "No session for clientId: " + clientId));
+        }
+
+        var result = applyTransition(command, session);
+        long expectedRevision = session != null ? session.revision() : 0;
+
+        return actionExecutor.execute(clientId, expectedRevision, result)
+                .thenReturn((CommandResult) new CommandResult.Success(result));
+    }
+
+    private TransitionResult applyTransition(Command command, SessionRecord session) {
         return switch (command) {
             case Command.Connect c -> connectTransition.apply(c, session, null, config);
             case Command.Disconnect c -> disconnectTransition.apply(c, session, null, config);

@@ -1,11 +1,13 @@
 package cn.elvis.monaco.testkit.time;
 
+import cn.elvis.monaco.core.port.BrokerClock;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public final class MutableBrokerClock implements Supplier<Instant> {
+public final class MutableBrokerClock implements BrokerClock, Supplier<Instant> {
 
     private Instant current;
 
@@ -17,6 +19,7 @@ public final class MutableBrokerClock implements Supplier<Instant> {
         return new MutableBrokerClock(instant);
     }
 
+    @Override
     public synchronized Instant now() {
         return current;
     }

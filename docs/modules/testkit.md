@@ -29,7 +29,7 @@ testkit 为单机 Broker、Store、Core、Transport 和 Plugin 测试提供公�
 | 编号 | 条件 | 影响范围 | 状态 |
 | --- | --- | --- | --- |
 | PRE-01 | 项目统一 Java 21 或 Java 25 toolchain，testkit 继承根约定 | 全阶段 | ⬜ 待决策 |
-| PRE-02 | core 的 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、`BrokerStore` 端口冻结 | TK-P0 | ⬜ 待实现 |
+| PRE-02 | core 的 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、`BrokerStore` 端口冻结 | TK-P0 | 🟨 状态模型已实现，原子 Store/时间端口待实现 |
 | PRE-03 | `BrokerEngine`、Connection/Domain Event 等端口冻结 | TK-P1 | ⬜ 待实现 |
 | PRE-04 | broker 暴露可测试的生命周期和实际监听地址 | TK-P1 | ⬜ 待实现 |
 | PRE-05 | QoS 2、恢复模型和 RocksDB Store 端口冻结 | TK-P2 | ⬜ 待实现 |
@@ -37,7 +37,7 @@ testkit 为单机 Broker、Store、Core、Transport 和 Plugin 测试提供公�
 
 PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。其他前置可以与对应阶段并行开发，但 provider 任务必须等待生产端口可编译。
 
-当前实现说明：Core 尚未提供已冻结的 `BrokerClock`、`BrokerScheduler`、`IdGenerator`、`BrokerStore` 和出站端口。为避免 testkit 反向定义生产契约，`MutableBrokerClock`、`ManualBrokerScheduler`、`SequenceIdGenerator`、Probe、FaultPlan 和公共断言先作为独立测试基础能力落地；生产端口冻结后再做机械接口适配。依赖这些端口的 Recording、故障包装器和 Store Contract 暂不创建占位接口。
+当前实现说明：Core 已提供状态 record，并把细粒度 CRUD Store 与 `StateTransaction` 迁入 Core；但 [Runtime 架构评审](runtime/architecture-review.md#3-core-的-reactor-与-store-端口决策) 已明确这些接口仍需收敛为支持 revision/epoch fencing 和原子 `MutationBatch` 的 `BrokerStore`。testkit 不绑定这组过渡接口，也不为其编写会被删除的契约或故障包装器。`BrokerClock`、`BrokerScheduler`、`IdGenerator` 和出站端口仍未提供，因此现有确定性基础类继续保持测试侧独立实现，待稳定生产端口落地后机械适配。
 
 ## 3. 任务总览
 
@@ -49,10 +49,10 @@ PRE-01 和 PRE-06 是项目级决策，不在 testkit 内建立兼容双栈。�
 | TK-P0-4 | Recording/Stub 出站端口 | PRE-02、TK-P0-3 | CO-010~CO-011、CO-036 | ⬜ 等待 Core 出站端口 |
 | TK-P0-5 | FaultPlan、Gate 和故障包装器 | PRE-02、TK-P0-3 | TK-009、ST-003~ST-004 | 🟨 FaultPlan/Gate 完成，待端口包装器 |
 | TK-P0-6 | Packet/State/Trace Assertions | protocol P0 | TK-013 | ✅ 已完成 |
-| TK-P0-7 | Store Fixture SPI | PRE-02 | ST-001~ST-004 | ⬜ 等待 BrokerStore/领域模型 |
-| TK-P0-8 | BrokerStoreContract 基线 | TK-P0-5~TK-P0-7 | ST-001~ST-004 | ⬜ 等待 BrokerStore/领域模型 |
-| TK-P0-9 | Fixture 清理与依赖自检 | TK-P0-1~TK-P0-8 | TK-010、TK-014 | 🟨 依赖自检完成，Fixture 清理待实现 |
-| TK-P1-1 | Packet Builders | protocol packet/property | CO/E2E P0-P1 | ⬜ 待实现 |
+| TK-P0-7 | Store Fixture SPI | PRE-02 | ST-001~ST-004 | ⬜ 等待原子 BrokerStore 端口 |
+| TK-P0-8 | BrokerStoreContract 基线 | TK-P0-5~TK-P0-7 | ST-001~ST-004 | ⬜ 等待原子 BrokerStore 端口 |
+| TK-P0-9 | Fixture 清理与依赖自检 | TK-P0-1~TK-P0-8 | TK-010、TK-014 | 🟨 清理/依赖自检完成，泄漏审计待实现 |
+| TK-P1-1 | Packet Builders | protocol packet/property | CO/E2E P0-P1 | ✅ 已完成 |
 | TK-P1-2 | BrokerEngineHarnessProvider 与 Harness | PRE-03、TK-P0 | CO-001~CO-036 | ⬜ 待实现 |
 | TK-P1-3 | 显式 Broker Scenario DSL | TK-P1-1~TK-P1-2 | CO-001~CO-087 | ⬜ 待实现 |
 | TK-P1-4 | Store Contract P1 扩展 | TK-P0-8、Store 模型 | ST-005~ST-010 | ⬜ 待实现 |
@@ -212,10 +212,13 @@ Memory Store 的消费者任务：
 
 实现：
 
+- `fixture/FixtureResourceRegistry.java`：注册即持有、严格逆序关闭、幂等关闭。
 - 公共 fixture 正常、启动失败、测试异常时的逆序关闭测试。
 - 清理异常作为 suppressed error 保留。
 - 所有 Scheduler/Executor/临时目录资源泄漏检查。
 - TK-010、TK-014 自动化。
+
+当前进度：`FixtureResourceRegistry`、TK-010 和依赖隔离自检已完成；Scheduler/Executor/临时目录的统一泄漏快照留待 TK-P4-2 的资源审计能力一并实现。
 
 TK-P0 退出标准：
 
@@ -229,6 +232,8 @@ TK-P0 退出标准：
 ### TK-P1-1：Packet Builders
 
 实现 `engine/PacketBuilders.java`，覆盖 Connect、Publish、Subscribe、Unsubscribe、ACK、Ping、Disconnect 的合法默认值和显式覆盖。
+
+当前进度：已实现并通过自测试；默认值保持合法，Packet ID、QoS、flags、Reason Code、Payload、属性和订阅列表均可显式覆盖。
 
 要求：
 
@@ -484,11 +489,13 @@ TK-P4 退出标准：TR-008、NF-001~NF-005 具备可重复的自动化夹具；
 
 | 拥有模块 | 必须提供 | 消费 testkit 能力 | 阶段 |
 | --- | --- | --- | --- |
-| `runtime-reactor` | `BrokerEngineHarnessProvider` 实现 | Engine Harness、Clock、Recording Ports | P0-P1 |
+| `core` | BrokerStore/Clock/Scheduler/Policy 端口 | Store Contract、Clock、Recording Ports | P0-P1 |
+| `runtime` | `BrokerEngineHarnessProvider` 实现 | Engine Harness、Recording Ports | P0-P1 |
+| `runtime-standalone` | Local Profile provider | Engine Harness、Broker fixtures | P0-P1 |
 | `store-memory` | Memory Store provider + contract subclass | BrokerStoreContract | P0-P2 |
 | `store-rocksdb` | Rocks Store provider + contract subclass | BrokerStoreContract、Recovery Fixture | P2 |
 | `broker` | InProcess/Forked launcher | BrokerTestFixture | P1-P2 |
-| `runtime-reactor/transport.netty` | 场景适配与实际地址读取 | Broker/client fixtures | P1-P4 |
+| `runtime/transport.netty` | 场景适配与实际地址读取 | Broker/client fixtures | P1-P4 |
 | `plugin-runtime` | Local PluginHarness/Invoker provider | Plugin contracts | P3 |
 | `plugin-remote-grpc` | gRPC PluginHarness/Invoker provider | Plugin contracts、network faults | P3 |
 

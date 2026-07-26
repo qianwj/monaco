@@ -1,26 +1,26 @@
 package cn.elvis.monaco.testkit.probe;
 
+import cn.elvis.monaco.core.port.BrokerClock;
+
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
-import java.util.function.Supplier;
 
 public final class TraceProbe {
 
-    private final Supplier<Instant> clock;
+    private final BrokerClock clock;
     private final AtomicLong nextSequence = new AtomicLong();
     private final ProbeBuffer<TraceEntry> buffer = new ProbeBuffer<>("trace");
 
-    public TraceProbe(Supplier<Instant> clock) {
+    public TraceProbe(BrokerClock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     public synchronized TraceEntry record(TraceEvent event) {
         TraceEntry entry = new TraceEntry(
-                nextSequence.getAndUpdate(Math::incrementExact), clock.get(), event);
+                nextSequence.getAndUpdate(Math::incrementExact), clock.now(), event);
         buffer.record(entry);
         return entry;
     }

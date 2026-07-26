@@ -6,7 +6,7 @@
 >
 > 当前状态：待 C1 创建
 >
-> 依赖：`cluster-runtime`、`cluster-protocol`、`testFixtures(project(":testkit"))`
+> 依赖：`runtime-cluster`、`cluster-protocol`、`testFixtures(project(":testkit"))`
 >
 > 关联设计：[集群模块详细设计 §12](../mqtt5-cluster-module-design.md#12-测试设计)、[Testkit 实现方案](../tests/testkit-implementation.md)、[Cluster Case](../tests/test-cases.md#9-cluster-case)
 
@@ -26,7 +26,7 @@ cluster-testkit 在基础 testkit 的 Clock、Probe、Trace、Scenario、Client 
 边界：
 
 - 不复制基础 MQTT Scenario DSL 或客户端夹具。
-- 不依赖具体 RSocket、gRPC、PostgreSQL、Ratis 或 RocksDB 实现类型。
+- 不依赖具体 RSocket、PostgreSQL、Ratis 或 RocksDB 实现类型；不提供已放弃的 gRPC peer provider。
 - 适配器在自身测试代码中提供 provider 并继承契约。
 - C1 in-memory fixture 只验证端口和路由语义；真实多节点必须使用独立 JVM 或 Testcontainers。
 - cluster-testkit 只能作为 test fixture/testImplementation 依赖，不能进入 Broker 生产启动入口。
@@ -35,10 +35,10 @@ cluster-testkit 在基础 testkit 的 Clock、Probe、Trace、Scenario、Client 
 
 | 编号 | 条件 | 阶段 | 状态 |
 | --- | --- | --- | --- |
-| CPRE-01 | C0 固定 `core` 领域边界，将客户端接入合并到 `runtime-reactor/transport.netty` 并删除旧 transport 模块 | C1 | ⬜ 待实现 |
+| CPRE-01 | C0 冻结 core Reactor 端口，建立 runtime/runtime-standalone，并将客户端接入合并到 `runtime/transport.netty` | C1 | ⬜ 待实现 |
 | CPRE-02 | `cluster-protocol` v1 envelope/schema 和 codec 可编译 | C1 | ⬜ 待实现 |
-| CPRE-03 | `cluster-runtime` 模型及 Peer/Coordinator/Outbox 端口冻结 | C1-C2 | ⬜ 待实现 |
-| CPRE-04 | `store-postgres`、`cluster-coordination-postgres` 测试配置可用 | C2 | ⬜ 待实现 |
+| CPRE-03 | `runtime-cluster` 模型及 Peer/Coordinator/Outbox 端口冻结 | C1-C2 | ⬜ 待实现 |
+| CPRE-04 | `store-postgres`、`cluster-outbox-postgres`、`cluster-coordination-postgres` 测试配置可用 | C2 | ⬜ 待实现 |
 | CPRE-05 | RSocket peer transport 端口和 mTLS 配置冻结 | C3 | ⬜ 待实现 |
 | CPRE-06 | Shared Group、drain/rebalance 端口冻结 | C4 | ⬜ 待实现 |
 | CPRE-07 | Ratis log/apply/snapshot 和 sharded Store 端口冻结 | C5 | ⬜ 待实现 |
@@ -61,7 +61,6 @@ cluster-testkit 在基础 testkit 的 Clock、Probe、Trace、Scenario、Client 
 | CTK-C3-3 | Assignment/Outbox/Peer Probes | CTK-C3-2 | 无 sleep 稳定条件 | ⬜ 待实现 |
 | CTK-C3-4 | NetworkFaultController | CTK-C3-2 | CL-003~CL-005、CL-023~CL-025、CL-030 | ⬜ 待实现 |
 | CTK-C3-5 | RSocket provider 契约接入 | CTK-C3-1~C3-4 | CL-001~CL-005、CL-020~CL-025 | ⬜ 待实现 |
-| CTK-C3-6 | optional gRPC provider 对照 | CTK-C3-1、gRPC adapter | CL-001~CL-005 | ⬜ 待实现 |
 | CTK-C4-1 | 跨节点 MQTT 语义场景 | CPRE-06、CTK-C3 | CL-026~CL-029 | ⬜ 待实现 |
 | CTK-C4-2 | Drain/Rebalance/Rolling Upgrade fixture | CPRE-06、CTK-C3 | CL-032 | ⬜ 待实现 |
 | CTK-C4-3 | Compose 部署 smoke | CTK-C4-1~C4-2 | CL-037 | ⬜ 待实现 |
@@ -86,7 +85,7 @@ cluster-testkit 在基础 testkit 的 Clock、Probe、Trace、Scenario、Client 
 
 - 创建 `cluster-testkit/build.gradle.kts` 并加入 `settings.gradle.kts`。
 - 应用 `java-library` 和 `java-test-fixtures`。
-- `testFixturesApi` 只依赖 `cluster-runtime`、`cluster-protocol` 和基础 testkit fixtures。
+- `testFixturesApi` 只依赖 `runtime-cluster`、`cluster-protocol` 和基础 testkit fixtures。
 - Testcontainers、Reactor Test、JUnit 只进入测试变体。
 - 增加 cluster-testkit 不进入 shared/replicated Broker runtimeClasspath 的检查。
 
@@ -94,7 +93,7 @@ cluster-testkit 在基础 testkit 的 Clock、Probe、Trace、Scenario、Client 
 
 ```kotlin
 dependencies {
-    testFixturesApi(project(":cluster-runtime"))
+    testFixturesApi(project(":runtime-cluster"))
     testFixturesApi(project(":cluster-protocol"))
     testFixturesApi(testFixtures(project(":testkit")))
 
@@ -122,7 +121,7 @@ dependencies {
 - major version、clusterId、capability 不兼容的确定拒绝。
 - requestId、deadline、epoch、sequence、trace context 无损。
 
-生成 Protobuf 类型只在 wire fixture 中出现，不进入 cluster-runtime Harness API。
+生成 Protobuf 类型只在 wire fixture 中出现，不进入 runtime-cluster Harness API。
 
 ### CTK-C1-3：PartitionResolverContract
 
@@ -242,7 +241,7 @@ C2 退出标准：PostgreSQL coordinator/store 通过共同契约；双 coordina
 - disconnect、half-open、Resume 成功/失败。
 - RouteAck 必须发生在业务提交之后。
 
-契约只面向 cluster-runtime Peer port，不暴露 RSocket Payload 或 gRPC stub。
+契约只面向 runtime-cluster Peer port，不暴露 RSocket Payload 或 gRPC stub。
 
 ### CTK-C3-2：独立 JVM ClusterFixture
 
@@ -276,10 +275,6 @@ C2 退出标准：PostgreSQL coordinator/store 通过共同契约；双 coordina
 ### CTK-C3-5：RSocket provider 接入
 
 `cluster-transport-rsocket` 提供薄 contract subclass/provider，运行 PeerTransportContract 和 CL-020~CL-025。Adapter 特有测试额外覆盖 frame mapping、mTLS、Lease 和 Resume，不复制公共契约。
-
-### CTK-C3-6：optional gRPC 对照
-
-仅当 `cluster-transport-grpc` 模块实现时接入。同一 PeerTransportContract 验证顺序、deadline、credit 和断线语义；optional adapter 失败不阻塞默认 RSocket 发布。
 
 C3 退出标准：远程 CONNECT/takeover/QoS 通过；RouteAck 丢失和 Owner 退出可恢复；peer 缓慢/断开时队列有界且不阻塞 I/O EventLoop。
 
@@ -398,11 +393,11 @@ C6 退出标准：CL-030~CL-034 可重复；长稳失败能定位到节点、par
 
 | 拥有模块 | Provider/Contract subclass | 禁止泄漏 |
 | --- | --- | --- |
-| `cluster-runtime` | PartitionResolver、本地 Peer/Coordinator provider | RSocket、SQL、Ratis 类型 |
+| `runtime-cluster` | PartitionResolver、本地 Peer/Coordinator provider | RSocket、SQL、Ratis 类型 |
 | `cluster-transport-rsocket` | RSocket Peer provider | RSocket Payload 进入 contract API |
-| `cluster-transport-grpc` | optional gRPC Peer provider | gRPC stub 进入 contract API |
 | `cluster-coordination-postgres` | PostgreSQL Coordinator provider | SQL row/client 进入 contract API |
-| `store-postgres` | ClusterOutbox provider | connection/transaction handle |
+| `store-postgres` | BrokerStore provider | connection/transaction handle |
+| `cluster-outbox-postgres` | ClusterOutbox provider | SQL row/client 进入 contract API |
 | `cluster-consensus-ratis` | ReplicatedLog/Metadata provider | Ratis Message 进入 runtime API |
 | `store-rocksdb-sharded` | ShardStateStore/Outbox provider | RocksDB handle/Column Family |
 | `broker` | shared/replicated ClusterFixture launcher | 第二个生产入口 |
@@ -448,9 +443,10 @@ CTK-C3 + CTK-C5
 
 ```bash
 ./gradlew :cluster-testkit:test :cluster-testkit:testFixturesJar
-./gradlew :cluster-runtime:contractTest
+./gradlew :runtime-cluster:contractTest
 ./gradlew :cluster-coordination-postgres:contractTest
 ./gradlew :store-postgres:contractTest
+./gradlew :cluster-outbox-postgres:contractTest
 ./gradlew :cluster-transport-rsocket:contractTest
 ./gradlew :cluster-consensus-ratis:contractTest
 ./gradlew :store-rocksdb-sharded:contractTest

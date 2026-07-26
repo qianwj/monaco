@@ -20,7 +20,6 @@ include(
     "store",
     "store:memory",
     "store:rocksdb",
-    "security-default",
     "plugin",
     "plugin:api",
     "plugin:runtime",

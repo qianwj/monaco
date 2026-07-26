@@ -10,9 +10,9 @@
 
 Gradle 模块用于约束代码所有权和依赖方向，不代表每个模块是独立进程。Monaco 仍以 `broker` 作为唯一应用入口和 Composition Root。
 
-1. 领域状态转换、Reactor 运行时和持久化分别归属不同模块；唯一客户端传输作为运行时内部基础设施隔离在专用包中。
-2. `cluster-runtime` 定义端口，RSocket、PostgreSQL、Ratis 和 RocksDB 只能作为外层适配器依赖它。
-3. wire message 与内部 command 分离；Protobuf 生成类不能进入 `core` 或 `runtime-reactor` API。
+1. core 的领域包保持纯函数，稳定应用端口允许 Reactor；唯一客户端传输作为共享 runtime 的内部基础设施隔离在专用包中。
+2. `runtime-cluster` 定义集群端口，RSocket、PostgreSQL coordination、Ratis 和 sharded RocksDB 只能作为外层适配器依赖它。
+3. wire message 与内部 command 分离；Protobuf 生成类不能进入 `core` 或 `runtime` API。
 4. shared-store 与 replicated-store 模块可以同时编译，但一个 Broker 进程只装配一种 Profile。
 5. optional adapter 不得通过 `api` 依赖污染公共 classpath。
 
@@ -23,68 +23,75 @@ Gradle 模块用于约束代码所有权和依赖方向，不代表每个模块�
 | 模块 | 职责 | 主要依赖 |
 | --- | --- | --- |
 | `protocol` | MQTT 5 不可变报文和值对象 | Java 标准库 |
-| `core` | command、state、transition、action、纯规则 | `protocol` |
-| `runtime-reactor` | Broker 用例、Connection Processor、Shard lane、端口，以及 Reactor Netty MQTT TCP/TLS/WS、codec、Channel registry | `core`、Reactor Core；Reactor Netty/Netty MQTT 为内部实现依赖 |
-| `store-memory` | 单机测试与开发状态存储 | `runtime-reactor` |
-| `store-rocksdb` | 单机持久状态、恢复和 schema | `runtime-reactor`、RocksDB |
-| `security-default` | 默认认证与 ACL 适配器 | `runtime-reactor` |
+| `core` | command、state、transition、action、纯规则，以及 BrokerStore/Policy/Event 等 Reactor 端口 | `protocol`、Reactor Core |
+| `runtime` | Broker 用例、Connection Processor、ShardMailbox，以及 Reactor Netty MQTT TCP/TLS/WS、codec、Channel registry | `core`；Reactor Netty/Netty MQTT 为内部实现依赖 |
+| `runtime-standalone` | LocalDispatcher、本地所有权、standalone lifecycle/profile | `runtime` |
+| `store-memory` | 单机测试与开发状态存储 | `core` |
+| `store-rocksdb` | 单机持久状态、恢复和 schema | `core`、RocksDB |
+| `auth` | 认证聚合模块（simple/scram/token + credential providers） | `core`、`plugin:api` |
 | `plugin-api` | 稳定插件 Hook、Decision 与 Event DTO | `protocol`、Reactor Core |
-| `plugin-runtime` | 插件装载、隔离、Hook chain 与运行时端口适配 | `runtime-reactor`、`plugin-api` |
+| `plugin-runtime` | 插件装载、隔离、Hook chain 与 core 端口适配 | `core`、`plugin-api` |
 | `plugin-remote-grpc` | 独立进程插件适配器 | `plugin-runtime`、gRPC |
-| `observability-micrometer` | 指标、健康检查和 trace context 适配 | `runtime-reactor`、Micrometer |
-| `testkit` | 单机契约、场景 DSL 和客户端夹具 | `protocol`、`runtime-reactor` |
+| `observability-micrometer` | 指标、健康检查和 trace context 适配 | `core`、Micrometer |
+| `testkit` | 单机契约、场景 DSL 和客户端夹具 | `protocol`、`core`、`runtime` |
 | `broker` | 配置、Profile 装配、生命周期、发行包 | 所选运行时与适配器 |
 
-`core` 是正式的领域模块名；异步用例编排位于 `runtime-reactor`。项目只支持 Reactor Netty 客户端接入，不提供可替换的客户端 Transport SPI，因此 `transport-reactor` 合并到 `runtime-reactor` 的 `transport.netty` 包并删除原 Gradle 模块。该合并不影响 `cluster-transport-rsocket`：后者负责 Broker peer 通信，协议、生命周期和故障域均不同，继续作为独立适配器。
+`core` 是正式的应用核心模块名，只有 `port` 包允许 Reactor。BrokerEngine 与共享异步用例编排位于 `runtime`；`runtime-standalone` 和 `runtime-cluster` 分别实现本地与集群 Profile，互不依赖且不复制 BrokerEngine。项目只支持 Reactor Netty 客户端接入，因此当前 `runtime-reactor` 重命名为 `runtime` 并吸收 `transport-reactor`。该合并不影响 `cluster-transport-rsocket`：后者负责 Broker peer 通信，继续作为 `runtime-cluster` 的独立适配器。
 
 ### 2.2 集群模块
 
 | 模块 | 职责 | 主要依赖 | 禁止包含 |
 | --- | --- | --- | --- |
 | `cluster-protocol` | peer/Raft Protobuf schema、版本化 envelope、codec | `protocol`、Protobuf | placement、I/O 编排 |
-| `cluster-runtime` | ClusterView、分片定位、派发、fanout、Outbox、drain | `runtime-reactor`、Reactor Core | RSocket、SQL、Ratis、RocksDB |
-| `cluster-transport-rsocket` | peer 连接、request-channel、Lease、Resume、mTLS | `cluster-runtime`、`cluster-protocol`、RSocket | Session 状态、Store |
-| `cluster-coordination-postgres` | lease、assignment、epoch、coordinator election | `cluster-runtime`、PostgreSQL client | MQTT 状态机 |
-| `store-postgres` | shared-store 事务、fencing、Outbox、恢复 | `runtime-reactor`、`cluster-runtime`、PostgreSQL client | peer transport |
-| `cluster-consensus-ratis` | Metadata/Data Raft Group、复制日志、成员变更、snapshot install | `cluster-runtime`、`cluster-protocol`、Ratis | RocksDB schema、MQTT codec |
-| `store-rocksdb-sharded` | shard-local 状态、WriteBatch、checkpoint、snapshot | `cluster-runtime`、`core`、RocksDB | Raft 选举、网络 |
-| `cluster-testkit` | 集群契约、故障注入、测试节点与断言 | `cluster-runtime`、`cluster-protocol`、`testkit` | 生产启动入口 |
+| `runtime-cluster` | ClusterView、分片定位、派发、fanout、Outbox、drain | `runtime`、`cluster-protocol` | RSocket、SQL、Ratis、RocksDB |
+| `cluster-transport-rsocket` | peer 连接、request-channel、Lease、Resume、mTLS | `runtime-cluster`、`cluster-protocol`、RSocket | Session 状态、Store |
+| `cluster-coordination-postgres` | lease、assignment、epoch、coordinator election | `runtime-cluster`、PostgreSQL client | MQTT 状态机 |
+| `store-postgres` | core BrokerStore、shared-store fencing、事务内 Outbox 写入、恢复 | `core`、PostgreSQL client | peer transport |
+| `cluster-outbox-postgres` | Outbox claim、ack、retry 和 drain 查询 | `runtime-cluster`、PostgreSQL client | MQTT 状态机 |
+| `cluster-consensus-ratis` | Metadata/Data Raft Group、复制日志、成员变更、snapshot install | `runtime-cluster`、`cluster-protocol`、Ratis | RocksDB schema、MQTT codec |
+| `store-rocksdb-sharded` | shard-local 状态、WriteBatch、checkpoint、snapshot | `runtime-cluster`、`core`、RocksDB | Raft 选举、网络 |
+| `cluster-testkit` | 集群契约、故障注入、测试节点与断言 | `runtime-cluster`、`cluster-protocol`、`testkit` | 生产启动入口 |
 
-集群只有 `cluster-transport-rsocket` 一个 PeerTransport 实现，不设计 `cluster-transport-grpc`。基础模块中的 `plugin-remote-grpc` 只服务插件进程隔离，不得被 cluster-runtime 或 RSocket adapter 依赖。`store-postgres` 与 `cluster-coordination-postgres` 分开，使 Store 事务和成员控制能够独立替换与测试。
+集群只有 `cluster-transport-rsocket` 一个 PeerTransport 实现，不设计 `cluster-transport-grpc`。基础模块中的 `plugin-remote-grpc` 只服务插件进程隔离，不得被 runtime-cluster 或 RSocket adapter 依赖。`store-postgres` 与 `cluster-coordination-postgres` 分开，使 Store 事务和成员控制能够独立替换与测试。
 
 ## 3. 依赖方向
 
 箭头表示左侧依赖右侧：
 
 ```text
-core -------------------------------> protocol
-runtime-reactor --------------------> core
-store-memory -----------------------> runtime-reactor
-store-rocksdb ----------------------> runtime-reactor
-security-default -------------------> runtime-reactor
-plugin-runtime ---------------------> runtime-reactor + plugin-api
-observability-micrometer -----------> runtime-reactor
+core -------------------------------> protocol + reactor-core
+runtime --------------------> core
+runtime-standalone -----------------> runtime
+store-memory -----------------------> core
+store-rocksdb ----------------------> core
+auth:* -----------------------------> core + plugin-api
+plugin-runtime ---------------------> core + plugin-api
+observability-micrometer -----------> core
 
 cluster-protocol -------------------> protocol
-cluster-runtime --------------------> runtime-reactor + core
-cluster-transport-rsocket ----------> cluster-runtime + cluster-protocol
-cluster-coordination-postgres ------> cluster-runtime
-store-postgres ---------------------> runtime-reactor + cluster-runtime
-cluster-consensus-ratis ------------> cluster-runtime + cluster-protocol
-store-rocksdb-sharded --------------> cluster-runtime + core
+runtime-cluster --------------------> runtime + core + cluster-protocol
+cluster-transport-rsocket ----------> runtime-cluster + cluster-protocol
+cluster-coordination-postgres ------> runtime-cluster
+store-postgres ---------------------> core
+cluster-outbox-postgres -----------> runtime-cluster
+cluster-consensus-ratis ------------> runtime-cluster + cluster-protocol
+store-rocksdb-sharded --------------> runtime-cluster + core
 
-broker -----------------------------> runtime-reactor + cluster-runtime
+broker -----------------------------> runtime + selected profile
                                       + selected adapters
-cluster-testkit --------------------> cluster-runtime + cluster-protocol + testkit
+cluster-testkit --------------------> runtime-cluster + cluster-protocol + testkit
 ```
 
 禁止出现以下反向依赖：
 
-- `core -> runtime-reactor/cluster-runtime`
-- `cluster-runtime -> cluster-transport-*`
-- `cluster-runtime -> PostgreSQL/Ratis/RocksDB`
+- `core -> runtime/runtime-standalone/runtime-cluster`
+- `runtime -> runtime-standalone/runtime-cluster`
+- `runtime-standalone -> runtime-cluster`
+- `runtime-cluster -> runtime-standalone`
+- `runtime-cluster -> cluster-transport-*`
+- `runtime-cluster -> PostgreSQL/Ratis/RocksDB`
 - `store-* -> transport-*`
-- `cluster-protocol -> cluster-runtime`
+- `cluster-protocol -> runtime-cluster`
 - 任何库模块依赖 `broker`
 
 ## 4. 目录与构建
@@ -94,15 +101,17 @@ cluster-testkit --------------------> cluster-runtime + cluster-protocol + testk
 ```text
 protocol/
 core/
-runtime-reactor/
+runtime/
+runtime-standalone/
 store-memory/
 store-rocksdb/
-security-default/
+auth/ (simple, scram, token, credential/*)
 cluster-protocol/
-cluster-runtime/
+runtime-cluster/
 cluster-transport-rsocket/
 cluster-coordination-postgres/
 store-postgres/
+cluster-outbox-postgres/
 cluster-consensus-ratis/
 store-rocksdb-sharded/
 plugin-api/
@@ -122,7 +131,9 @@ cluster-testkit/
 - `cluster-protocol` 使用 Protobuf plugin；生成目录不手工修改。
 - `cluster-testkit` 使用 `java-test-fixtures`，不进入生产 `runtimeClasspath`。
 - RSocket/Ratis/数据库依赖一律使用 `implementation`；gRPC 依赖只能存在于 `plugin-remote-grpc`。
-- Reactor Netty 与 Netty MQTT codec 是 `runtime-reactor` 的 `implementation` 依赖；Netty 类型只能出现在 `cn.elvis.monaco.runtime.transport.netty`，不得进入公共 API 或其他 runtime 包。
+- Reactor Netty 与 Netty MQTT codec 是 `runtime` 的 `implementation` 依赖；Netty 类型只能出现在 `cn.elvis.monaco.runtime.transport.netty`，不得进入公共 API 或其他 runtime 包。
+- Reactor Core 是 `core` 的 `api` 依赖，但只有 `cn.elvis.monaco.core.port` 可以导入 `reactor.*`；Store adapter 不依赖任何 runtime 模块。
+- `runtime-standalone` 与 `runtime-cluster` 只依赖共享 runtime 且互不依赖，Profile 模块不得复制 Engine、Handler、ShardMailbox 或 transport.netty。
 - CI 增加依赖边界检查，并分别构建 shared-store 与 replicated-store runtimeClasspath。
 
 ## 5. `cluster-protocol`
@@ -144,11 +155,11 @@ Schema 按用途拆分，字段和兼容规则以 [集群通信协议](mqtt5-clu
 
 所有 envelope 必须携带 `clusterId`、source node/incarnation、protocol version、requestId；分片请求额外携带 `partitionType + partitionId + dataShardId + mappingGeneration + epoch`。未知字段按 Protobuf 兼容规则保留，未知必需 capability 在 handshake 阶段拒绝。
 
-`ClusterWireCodec` 只负责 envelope framing、schema version 和 `protocol` 值对象编码，不依赖 `core` 或 `cluster-runtime`。domain/wire 映射分别由 RSocket adapter 的 `PeerMessageMapper` 和 Ratis adapter 的 `RatisCommandMapper` 完成。生成类与 RSocket `Payload`、Ratis `Message` 都停留在适配器边界，不能作为 `cluster-runtime` 方法参数。
+`ClusterWireCodec` 只负责 envelope framing、schema version 和 `protocol` 值对象编码，不依赖 `core` 或 `runtime-cluster`。domain/wire 映射分别由 RSocket adapter 的 `PeerMessageMapper` 和 Ratis adapter 的 `RatisCommandMapper` 完成。生成类与 RSocket `Payload`、Ratis `Message` 都停留在适配器边界，不能作为 `runtime-cluster` 方法参数。
 
-## 6. `cluster-runtime`
+## 6. `runtime-cluster`
 
-基础包：`cn.elvis.monaco.cluster.runtime`。
+基础包：`cn.elvis.monaco.runtime.cluster`。
 
 ### 6.1 包结构
 
@@ -233,7 +244,7 @@ public interface ShardStateStore {
 
 ### 6.4 核心实现
 
-- `ClusterCommandDispatcher` 实现 `runtime-reactor` 的 `CommandDispatcher`。本地 assignment 进入 `ShardProcessor`，远端 assignment 进入 `SessionLanePool`。
+- `ClusterCommandDispatcher` 实现 `runtime` 的 `CommandDispatcher`。本地 assignment 进入 `ShardProcessor`，远端 assignment 进入 `SessionLanePool`。
 - `PartitionResolver` 先用稳定 hash 生成 `PartitionKey`，再通过当前 `PartitionTable` 和 assignment 定位 Owner；收到 stale mapping/epoch 时刷新视图并重试。
 - `ClusterPublicationRouter` 将逻辑目标分区写入 Outbox，不直接绑定 nodeId。
 - `ClusterOutboxDispatcher` 按当前 Owner 合并 batch，限制 peer/partition 并发并保持稳定 task ID。
@@ -280,12 +291,15 @@ public interface ShardStateStore {
 | 类 | 职责 |
 | --- | --- |
 | `PostgresBrokerStore` | 实现运行时状态事务和恢复 |
-| `PostgresClusterOutboxStore` | claim、ack、retry 与 skip-locked batch |
 | `PostgresTransactionContext` | 同一事务内执行状态、fencing 和 Outbox 变更 |
 | `PostgresSchemaMigrator` | 带版本 schema migration |
 | `PostgresValueCodec` | 稳定二进制/JSONB 编码与 schemaVersion |
 
 状态写入 SQL 必须同时验证 `owner_node_id + owner_incarnation + epoch`。`RouteAck` 只能在目标 Delivery 唯一键提交后返回。连接池耗尽、事务冲突和数据库不可用通过 `Mono.error` 传播，不允许在 Reactor I/O EventLoop 上同步等待 JDBC。
+
+### 8.3 `cluster-outbox-postgres`
+
+基础包：`cn.elvis.monaco.cluster.adapter.outbox.postgres`。`PostgresClusterOutboxStore` 实现 runtime-cluster 的 claim、ack、retry 端口，使用与 store-postgres 相同的 Outbox schema，但不参与 MQTT 状态写入。新 Outbox 行只能由 `BrokerStore.commit(StoreCommit)` 在状态事务中原子写入；本模块只负责提交后的派发与确认。
 
 ## 9. Replicated-store 模块
 
@@ -391,16 +405,17 @@ public record ClusterConfig(
 
 | 任务 | 产出 | 退出标准 |
 | --- | --- | --- |
-| C0-1 | `core` 保持纯领域层，异步编排迁至 `runtime-reactor` | core 无 Reactor，runtime 统一 Mono/Flux |
-| C0-2 | 将 `transport-reactor` 合并到 `runtime-reactor/transport/netty` 并删除原模块 | TCP/TLS/WS 共用 BrokerEngine；settings 无旧模块 |
-| C0-3 | Shard lane 与有界 mailbox | 同 Shard 串行，满载策略可测试 |
+| C0-1 | core 引入 Reactor 并承接 BrokerStore/Policy/Event 等端口 | 只有 core.port 导入 Reactor；Store adapter 只依赖 core |
+| C0-2 | 将 runtime-reactor 重命名为 runtime，并吸收 transport-reactor | TCP/TLS/WS 共用 BrokerEngine；settings 无旧模块名 |
+| C0-3 | 创建 runtime-standalone，迁移 LocalDispatcher | Profile 不复制 Engine/Handler/transport |
+| C0-4 | Shard lane 与有界 mailbox | 同 Shard 串行，满载策略可测试 |
 
 ### C1：集群契约与本地模拟
 
 | 任务 | 产出 | 退出标准 |
 | --- | --- | --- |
 | C1-1 | `cluster-protocol` schema 与兼容测试 | v1 round-trip、未知字段测试通过 |
-| C1-2 | `cluster-runtime` 模型、端口、PartitionResolver | 无基础设施依赖 |
+| C1-2 | `runtime-cluster` 模型、端口、PartitionResolver | 无基础设施依赖 |
 | C1-3 | in-memory coordinator/peer fixtures | 多节点逻辑流程可确定性测试 |
 
 ### C2：Shared-store 控制与状态
@@ -409,7 +424,7 @@ public record ClusterConfig(
 | --- | --- | --- |
 | C2-1 | PostgreSQL schema/migration | 全新库与升级路径通过 |
 | C2-2 | coordination lease/assignment/fencing | 双 coordinator、旧 Owner 测试通过 |
-| C2-3 | Store transaction + Outbox | persist-before-ACK 与幂等通过 |
+| C2-3 | store-postgres 状态事务 + cluster-outbox-postgres drain | persist-before-ACK、原子 Outbox 与幂等通过 |
 
 ### C3：RSocket 数据平面
 
@@ -446,12 +461,14 @@ public record ClusterConfig(
 ## 14. 模块验收标准
 
 1. Gradle 依赖图符合第 3 节，不存在循环和反向依赖。
-2. `core` 只有 Java 标准库与 `protocol`；`cluster-runtime` 不含基础设施依赖。
+2. `core` 只增加 Reactor Core；只有 core.port 可导入 Reactor，runtime-cluster 不含基础设施依赖。
 3. Protobuf、RSocket、Ratis、SQL 和 RocksDB 类型不越过各自 adapter 边界。
 4. `broker` 是唯一 `main` 所在模块，集群不新增 `broker-app` 或独立应用入口。
 5. standalone、shared-store、replicated-store Profile 均通过同一 MQTT 行为测试集。
 6. 每个 port 至少有一个 contract test；RSocket 和两个存储 Profile 有故障测试。
 7. 所有 executor、mailbox、连接池和 batch 参数可配置、可观测且有硬上限。
 8. 集群模块图和 runtimeClasspath 中不存在 `cluster-transport-grpc`；gRPC 只能由插件远程适配器引入。
-9. settings 与 broker runtimeClasspath 不存在独立 `transport-reactor`；Reactor Netty/Netty MQTT 不从 `runtime-reactor` 公共 API 泄漏。
+9. settings 包含 runtime、runtime-standalone 和 runtime-cluster，不存在 runtime-reactor、transport-reactor 或 cluster-runtime；Reactor Netty/Netty MQTT 不从 runtime 公共 API 泄漏。
 10. `io.netty.*` import 只允许出现在 `cn.elvis.monaco.runtime.transport.netty`，由包边界测试持续验证。
+11. runtime-standalone 与 runtime-cluster 互不依赖且不复制共享 Engine/Handler；Local/Cluster Dispatcher 通过同一契约。
+12. BrokerStore 位于 core.port；store-memory、store-rocksdb 和 store-postgres 不依赖任何 runtime 模块。

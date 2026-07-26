@@ -43,24 +43,25 @@
 
     MQTT Client
          |
-    runtime-reactor
+    runtime
       transport.netty + use cases
        |                    |
        v                    v
-    core -> protocol    runtime ports
-                            |
+    core -> protocol    runtime-standalone
+      core ports              local profile
+         |
        +----------+---------+----------+
        |          |           |          |
     store-*   security    plugins   observability
 
-protocol 保存纯 MQTT 模型、校验和状态机；core 保存纯领域 command、state、transition 和 action；runtime-reactor 保存 Broker 用例、异步端口、mailbox，并内置项目唯一支持的 Reactor Netty 客户端接入。store-memory、store-rocksdb、security-default、plugin-runtime 和 observability-micrometer 是运行时端口适配器；broker 是唯一依赖装配和生命周期入口。完整模块边界、依赖图和接口契约见架构设计文档。
+protocol 保存纯 MQTT 模型、校验和状态机；core 保存纯领域 command/state/transition/action 和稳定 Reactor 应用端口；runtime 保存 Broker 用例、提交管线、mailbox，并内置项目唯一支持的 Reactor Netty 客户端接入。runtime-standalone 提供 LocalDispatcher 和本地 Profile；store:memory、store:rocksdb、auth 模块、plugin-runtime 和 observability-micrometer 实现 core 端口。broker 是唯一依赖装配和生命周期入口。
 
 ### 3.1 并发模型
 
 - Connection Mailbox 保证同一物理连接报文有序。
 - Session Mailbox 保证同一 clientId 的状态变更串行，不同 clientId 可并行。
 - Routing Coordinator 串行化订阅索引变更和路由快照，投递阶段按目标会话并行。
-- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，runtime-reactor 及其异步端口统一返回 Reactor Mono；core 保持同步纯 Java。
+- Event Loop 上禁止文件、RocksDB、认证扩展等阻塞调用，core.port、runtime 及异步适配器统一返回 Reactor Mono；core 领域包保持同步纯 Java。
 - 取消当前虚拟线程 busy-poll；新消息、ACK 和窗口释放通过事件触发 drain。
 - Store 的复合操作必须原子化。内存实现使用事务锁和不可变快照，RocksDB 实现使用 WriteBatch。
 
@@ -84,7 +85,7 @@ protocol 保存纯 MQTT 模型、校验和状态机；core 保存纯领域 comma
 
 ### 4.5 BrokerStore
 
-runtime-reactor 定义统一 BrokerStore 事务端口，事务视图覆盖 Session、Subscription、Message、Delivery、Inflight、Retain 和 Will。store-memory 与 store-rocksdb 通过同一套 Store 契约测试；业务层不得依赖具体存储。Topic Alias 属于 LogicalConnectionState，不进入持久化 Store。
+runtime 定义统一 BrokerStore 事务端口，事务视图覆盖 Session、Subscription、Message、Delivery、Inflight、Retain 和 Will。store-memory 与 store-rocksdb 通过同一套 Store 契约测试；业务层不得依赖具体存储。Topic Alias 属于 LogicalConnectionState，不进入持久化 Store。
 
 ## 5. 协议处理设计
 
@@ -181,7 +182,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 
 ### 7.1 插件执行边界
 
-插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。runtime-reactor 定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部异步接口返回 Reactor Mono。
+插件拆分为 plugin-api、plugin-runtime 和 plugin-remote-grpc。runtime 定义 Authenticator、Authorizer、PolicyInterceptor 和 DomainEventSink 等端口；plugin-runtime 将进程内或远程 Hook Chain 适配到这些端口，broker 负责装配。全部异步接口返回 Reactor Mono。
 
 - Authentication、Authorization、Connect、Publish、Subscribe 和 Will 属于持久化前的 Decision Hook，必须有超时、确定顺序和 fail-closed 结果。
 - Publish 修改后必须重新校验 Topic、Payload、Property、QoS 和配额，再执行授权与 Store 事务。
@@ -226,7 +227,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 ### P0：建立可运行基线
 
 - 修复并提交可复现的 Gradle wrapper。
-- 创建 protocol、core、runtime-reactor、store-memory 和 broker 模块骨架；将现有 transport-reactor 并入 `runtime-reactor/transport/netty` 后从 settings 删除。
+- 创建 protocol、core、runtime、runtime-standalone、store-memory 和 broker 模块骨架；将 runtime-reactor 重命名为 runtime，并吸收现有 transport-reactor。
 - 冻结旧 gateway 协议开发，新模块不得依赖旧模块。
 - 完成应用生命周期、动态测试端口和 Broker READY 等待机制。
 
@@ -234,7 +235,7 @@ ProtocolErrorMapper 将内部错误映射为 MQTT 5 Reason Code 和动作：
 
 ### P1：QoS 0/1 与订阅闭环
 
-- 在 `runtime-reactor/transport.netty` 实现 PhysicalConnectionState，在 runtime/core 边界实现 LogicalConnectionState、SessionRecord、属性校验和错误映射；后两者不得持有 Channel 或 ByteBuf。
+- 在 `runtime/transport.netty` 实现 PhysicalConnectionState，在 runtime/core 边界实现 LogicalConnectionState、SessionRecord、属性校验和错误映射；后两者不得持有 Channel 或 ByteBuf。
 - 完成普通/通配符订阅、出站 Packet ID、QoS 0/1、背压和基础 ACL。
 - 建立 plugin-api、plugin-runtime 骨架，以及认证、授权、Publish、Subscribe Hook 和提交后 Event。
 

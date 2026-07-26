@@ -16,12 +16,12 @@
 
 ## 1. 目标与原则
 
-Monaco 必须使用同一套 `protocol + core + runtime-reactor` 同时支持单机和集群。部署平台只负责进程编排、网络和 Secret，不参与 MQTT 正确性判断。集群设计遵循以下原则：
+Monaco 必须使用同一套 `protocol + core + runtime` 同时支持单机和集群。部署平台只负责进程编排、网络和 Secret，不参与 MQTT 正确性判断。集群设计遵循以下原则：
 
 1. 运行模式由配置显式选择，不根据容器环境自动推断。
 2. Session、QoS、Will 和 Delivery 的正确性仍由状态机、Store 事务及 fencing 保证。
 3. DNS、心跳和网络连接只能表示可达性，不能单独证明节点拥有状态写权限。
-4. 节点通信使用类型化端口和 Reactor Mono，不把 EventBus address 或具体 RPC 类型暴露给 core/runtime-reactor。
+4. 节点通信使用类型化端口和 Reactor Mono，不把 EventBus address 或具体 RPC 类型暴露给 core/runtime。
 5. 所有跨节点消息均允许重复，接收端依靠稳定 id 和 Store 唯一约束实现幂等。
 6. 节点失效不能导致旧 Owner 恢复后继续写入，也不能产生无界内存队列。
 
@@ -87,28 +87,30 @@ PostgreSQL 是 shared-store profile 的状态和协调基线。Broker 高可用�
 | 模块 | 职责 | 主要依赖 |
 | --- | --- | --- |
 | cluster-protocol | peer/Raft Protobuf schema、版本化 envelope 和 codec | protocol、Protobuf |
-| cluster-runtime | 成员视图、分区表、Session Dispatcher、Publication Fanout、drain | runtime-reactor、core、reactor-core |
-| cluster-transport-rsocket | peer connection、Session channels、Route channels、Lease、Resume、mTLS | cluster-runtime、cluster-protocol、RSocket |
-| cluster-coordination-postgres | 节点租约、分区 assignment、epoch 和 coordinator 选举 | cluster-runtime、PostgreSQL client |
-| store-postgres | BrokerStore 事务、Outbox、幂等约束和恢复 | runtime-reactor、cluster-runtime、PostgreSQL client |
-| cluster-consensus-ratis | Metadata/Data Raft Group、复制日志和 snapshot | cluster-runtime、cluster-protocol、Ratis |
-| store-rocksdb-sharded | ShardStateStore、WriteBatch、checkpoint 和恢复 | cluster-runtime、core、RocksDB |
-| cluster-testkit | 集群传输、协调、存储和故障契约测试 | cluster-runtime、cluster-protocol、testkit |
+| runtime-cluster | 成员视图、分区表、Session Dispatcher、Publication Fanout、drain | runtime、core、cluster-protocol |
+| cluster-transport-rsocket | peer connection、Session channels、Route channels、Lease、Resume、mTLS | runtime-cluster、cluster-protocol、RSocket |
+| cluster-coordination-postgres | 节点租约、分区 assignment、epoch 和 coordinator 选举 | runtime-cluster、PostgreSQL client |
+| store-postgres | core BrokerStore 事务、Outbox 原子写入、幂等约束和恢复 | core、PostgreSQL client |
+| cluster-outbox-postgres | Outbox claim、ack、retry 和 drain | runtime-cluster、PostgreSQL client |
+| cluster-consensus-ratis | Metadata/Data Raft Group、复制日志和 snapshot | runtime-cluster、cluster-protocol、Ratis |
+| store-rocksdb-sharded | ShardStateStore、WriteBatch、checkpoint 和恢复 | runtime-cluster、core、RocksDB |
+| cluster-testkit | 集群传输、协调、存储和故障契约测试 | runtime-cluster、cluster-protocol、testkit |
 
-这些是进入集群阶段后新增的目标模块，按实施阶段逐步加入 `settings.gradle.kts`。不允许 `core` 或 `runtime-reactor` 为尚未实现的传输建立反向依赖。
+这些是进入集群阶段后新增的目标模块，按实施阶段逐步加入 `settings.gradle.kts`。不允许 `core` 或 `runtime` 为尚未实现的传输建立反向依赖。
 
 依赖方向：
 
     cluster-protocol ----------------> protocol
-    cluster-runtime -----------------> runtime-reactor + core
-    cluster-transport-rsocket -------> cluster-runtime + cluster-protocol
-    cluster-coordination-postgres ---> cluster-runtime
-    store-postgres ------------------> runtime-reactor + cluster-runtime
-    cluster-consensus-ratis ---------> cluster-runtime + cluster-protocol
-    store-rocksdb-sharded -----------> cluster-runtime + core
-    broker --------------------------> cluster-runtime + selected adapters
+    runtime-cluster -----------------> runtime + core
+    cluster-transport-rsocket -------> runtime-cluster + cluster-protocol
+    cluster-coordination-postgres ---> runtime-cluster
+    store-postgres ------------------> core
+    cluster-outbox-postgres --------> runtime-cluster
+    cluster-consensus-ratis ---------> runtime-cluster + cluster-protocol
+    store-rocksdb-sharded -----------> runtime-cluster + core
+    broker --------------------------> runtime + runtime-cluster + selected adapters
 
-cluster-runtime 定义传输端口，唯一生产实现为 RSocket：
+runtime-cluster 定义传输端口，唯一生产实现为 RSocket：
 
     interface PeerTransport {
         Mono<SessionChannel> openSessionChannel(SessionTarget target);
@@ -116,7 +118,7 @@ cluster-runtime 定义传输端口，唯一生产实现为 RSocket：
         Mono<Void> sendControl(ControlCommand command);
     }
 
-core 和 runtime-reactor 不依赖 cluster-runtime。broker 在 standalone 模式注入 Local Dispatcher，在 cluster 模式注入 ClusterCommandDispatcher。
+core 和 runtime 不依赖任何 Profile 模块。broker 在 standalone 模式装配 runtime-standalone，在 cluster 模式装配 runtime-cluster；两个 Profile 互不依赖。
 
 ## 5. 节点身份、成员与 Fencing
 
@@ -143,12 +145,12 @@ DNS、Docker Service、Swarm DNSRR 和 Kubernetes Headless Service 只用于解�
 
 客户端可以连接任意 Ingress Broker，不要求负载均衡器理解 MQTT CONNECT：
 
-1. `runtime-reactor/transport.netty` 解码 CONNECT 并取得 clientId。
+1. `runtime/transport.netty` 解码 CONNECT 并取得 clientId。
 2. clientId 为空时，Ingress 生成可在 Attach 重试中复用的 Assigned Client ID，再计算 Session Partition。
 3. ClusterSessionDispatcher 查询本地 PartitionTable 与 assignment 快照。
-4. Owner 是本节点时进入 runtime-reactor ShardProcessor；否则选择到目标节点的 Session lane。
+4. Owner 是本节点时进入 runtime ShardProcessor；否则选择到目标节点的 Session lane。
 5. Owner 执行完整协议校验、插件 Hook、Session takeover 和 Store 事务。
-6. Owner 产生的 ServerPacket 经 Session lane 返回 Ingress，再由 `runtime-reactor/transport.netty` 编码发送。
+6. Owner 产生的 ServerPacket 经 Session lane 返回 Ingress，再由 `runtime/transport.netty` 编码发送。
 
 实际 Netty Channel 始终留在 Ingress。Owner 只持有 `LogicalConnectionState` 和 ConnectionSink；ConnectionSink 可以是本地 transport，也可以是远程 SessionChannel，不能把 Channel、ByteBuf 或其他 Netty 对象序列化到集群协议。
 
@@ -267,7 +269,7 @@ Pekko Cluster Sharding 可以自然地把 clientId 映射为 SessionEntity，并
 
     MQTT Client
          |
-    runtime-reactor
+    runtime
       transport.netty (TCP / TLS / WebSocket)
          |
       connection + shard processors
@@ -276,7 +278,7 @@ Pekko Cluster Sharding 可以自然地把 clientId 映射为 SessionEntity，并
          +---- Ratis ------> shard replicas
          `---- RocksDB ----> applied shard state
 
-core 保存同步纯函数形式的 command、state、transition 和 action，不依赖 Reactor 或 Netty。runtime-reactor 使用 Mono/Flux 编排 use case、生命周期、timeout 和 backpressure。standalone 和 cluster 复用同一运行时，只替换 Local/Remote Dispatcher 和 Store adapter。
+core 的 command/state/transition/rule 保持同步纯函数，只有 core.port 使用 Reactor，整个 core 不依赖 Netty。runtime 使用 Mono/Flux 编排 use case、生命周期、timeout 和 backpressure。standalone 和 cluster 复用同一 runtime，分别由 runtime-standalone 与 runtime-cluster 提供 Dispatcher 和所有权策略。
 
 运行时端口统一为 Reactor 类型：
 
@@ -295,7 +297,7 @@ Reactor Netty 通过 TcpServer/HttpServer 和 Netty ChannelPipeline 实现 MQTT 
 - TcpServer 提供 MQTT TCP 和 TLS。
 - HttpServer WebSocket route 提供 MQTT over WebSocket，并校验 mqtt subprotocol。
 - Netty MQTT encoder/decoder 只负责 wire frame；protocol 继续校验 MQTT 5 属性、Reason Code、Topic、UTF-8 和状态阶段。
-- `runtime-reactor` 的 `transport.netty` 包把 Netty `MqttMessage` 转为不可变 `ClientPacket`，把 `ServerPacket` 转回 Netty message。
+- `runtime` 的 `transport.netty` 包把 Netty `MqttMessage` 转为不可变 `ClientPacket`，把 `ServerPacket` 转回 Netty message。
 - Netty ByteBuf 只能存在于 transport；进入 core 前转换为有明确所有权的 Payload，禁止跨异步边界保留未 retain 的 ByteBuf。
 - Reactor Netty 与 Netty MQTT codec 必须是 `implementation` 依赖；公共 API 和其他 runtime 包不得出现 `io.netty.*`。
 
@@ -346,7 +348,7 @@ I/O worker 初始值接近可用 CPU 数，再根据连接建立速率、TLS、�
 
 因此两者在网络层都属于 multi-reactor，并都能利用多核处理大量连接。差异在编程约束：Vert.x Handler 通常由 Context 保持线程亲和性；Reactor 操作符可能在 publishOn、subscribeOn 或第三方异步回调处切换线程。实现必须显式定义调度边界，不能把 Reactor Context 当作线程或互斥机制。
 
-网络 multi-reactor 不能代替 Session 串行化。runtime-reactor 使用固定数量的单线程 Shard lanes，按 shardId 哈希选 lane；同一 lane 可以承载多个 Shard，但同一 Shard 的 command 永远串行。禁止为每个 clientId 创建线程，也禁止使用 parallel()/parallelFlux() 并发修改 SessionRecord 或相关业务记录。
+网络 multi-reactor 不能代替 Session 串行化。runtime 使用固定数量的单线程 Shard lanes，按 shardId 哈希选 lane；同一 lane 可以承载多个 Shard，但同一 Shard 的 command 永远串行。禁止为每个 clientId 创建线程，也禁止使用 parallel()/parallelFlux() 并发修改 SessionRecord 或相关业务记录。
 
 每个 lane 使用有界 MPSC mailbox 接收来自任意 I/O EventLoop 的命令，并由一个 Scheduler.Worker 顺序 drain。异步 Store、RSocket 或 Ratis 调用不占用 lane 线程等待；完成信号重新调度到原 lane 后才应用状态转换和处理下一条命令。mailbox 满时执行第 9.7 节的背压或拒绝策略，不能切换到无界 onBackpressureBuffer。
 
@@ -362,7 +364,7 @@ publishOn/subscribeOn 只能出现在明确的适配器边界。Ratis/RocksDB �
 
 ### 9.9 模块与插件影响
 
-全 Reactor 基础模块为 protocol、core、runtime-reactor 和 broker；客户端 Reactor Netty 接入属于 runtime-reactor 内部实现。集群公共增量为 cluster-protocol、cluster-runtime、cluster-transport-rsocket 和 cluster-testkit。shared-store Profile 增加 store-postgres、cluster-coordination-postgres，replicated-store Profile 增加 cluster-consensus-ratis、store-rocksdb-sharded。完整依赖方向见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
+全 Reactor 基础模块为 protocol、core、runtime、runtime-standalone 和 broker；客户端 Reactor Netty 接入属于 runtime 内部实现。集群模式以 runtime-cluster 替换 runtime-standalone，并增加 cluster-protocol、cluster-transport-rsocket 和 cluster-testkit。shared-store Profile 增加 store-postgres、cluster-outbox-postgres、cluster-coordination-postgres，replicated-store Profile 增加 cluster-consensus-ratis、store-rocksdb-sharded。完整依赖方向见 [集群模块详细设计](mqtt5-cluster-module-design.md)。
 
 该选择还要求：
 
@@ -372,7 +374,7 @@ publishOn/subscribeOn 只能出现在明确的适配器边界。Ratis/RocksDB �
 - observability 使用 Reactor Context 传播 trace/client/session 信息，不能依赖 ThreadLocal 跨异步边界。
 - 异步测试使用 StepVerifier，网络互操作继续使用真实 MQTT 5 客户端。
 
-这是全局异步模型迁移，必须在开始实现 core、runtime-reactor 和 plugin-api 前完成文档及模块同步；客户端传输随 runtime-reactor 一并实现。
+这是全局异步模型迁移，必须在开始实现 core、runtime 和 plugin-api 前完成文档及模块同步；客户端传输随 runtime 一并实现。
 
 ## 10. Shard Data + RocksDB 备选路线
 
@@ -416,7 +418,7 @@ Ratis 只负责同一 Shard 副本之间的共识复制。Ingress 到 Shard Lead
 
 ### 10.3 Core 事务边界
 
-Shard 架构不能支持“一个 WriteBatch 原子修改任意 Session、Retain 和共享组”。runtime-reactor 必须把事务边界显式限制在一个 Shard：
+Shard 架构不能支持“一个 WriteBatch 原子修改任意 Session、Retain 和共享组”。runtime 必须把事务边界显式限制在一个 Shard：
 
     interface ShardStore {
         <T> Mono<T> transact(ShardKey shard, StoreOperation<T> operation);
@@ -425,7 +427,7 @@ Shard 架构不能支持“一个 WriteBatch 原子修改任意 Session、Retain
 - 单个 Session 命令只能原子修改其 Session Shard。
 - 跨 Session Delivery、Retain 更新和共享订阅选择使用持久 Outbox/Saga。
 - core Transition 不能假设 MessageRecord 与所有订阅者 Delivery 在一个全局事务中完成。
-- PostgreSQL 实现即使能够执行跨表事务，也不得向 runtime-reactor 暴露更强的跨 Shard 假设。
+- PostgreSQL 实现即使能够执行跨表事务，也不得向 runtime 暴露更强的跨 Shard 假设。
 
 建议无论第一版选择 PostgreSQL 还是 RocksDB + Ratis，都从一开始采用 Shard-local transaction。这样共享 Store 可以作为较简单的首个实现，而不锁死未来的复制存储路线。
 
@@ -475,7 +477,7 @@ cluster-replicated 路线额外需要：
 | cluster-consensus-ratis | Metadata/Data Raft Group、成员变更、term、snapshot install |
 | store-rocksdb-sharded | ShardStateMachine、WriteBatch、checkpoint、lastAppliedIndex 和恢复 |
 
-cluster-consensus-ratis 和 store-rocksdb-sharded 都依赖 cluster-runtime 定义的 Shard/StateMachine 端口，彼此不形成循环依赖。现有 store-rocksdb 继续作为 standalone 实现，不能直接被多个集群节点共享。
+cluster-consensus-ratis 和 store-rocksdb-sharded 都依赖 runtime-cluster 定义的 Shard/StateMachine 端口，彼此不形成循环依赖。现有 store-rocksdb 继续作为 standalone 实现，不能直接被多个集群节点共享。
 
 ### 10.7 部署约束
 
@@ -501,7 +503,7 @@ Kubernetes 和 Swarm 的副本数不是 Raft replication factor。编排器只�
 | 容器存储 | Broker 可无状态 | 每个数据节点需要独立持久卷或完整副本重建 |
 | 实现周期 | 适合先完成协议和集群闭环 | 适合长期无外部数据库和水平扩展目标 |
 
-如果长期产品目标明确要求无外部数据库、高吞吐和 Broker 自管理副本，应在实现 runtime-reactor 前确认该路线，因为 Shard-local 事务会影响所有 Store 用例。若近期目标是先交付正确可用的 MQTT 5 集群，则先实现 PostgreSQL profile，但仍按 Shard-local 端口和 Outbox 约束编写 runtime-reactor。
+如果长期产品目标明确要求无外部数据库、高吞吐和 Broker 自管理副本，应在实现 runtime 前确认该路线，因为 Shard-local 事务会影响所有 Store 用例。若近期目标是先交付正确可用的 MQTT 5 集群，则先实现 PostgreSQL profile，但仍按 Shard-local 端口和 Outbox 约束编写 runtime。
 
 ## 11. 故障、Drain 与升级
 
@@ -575,13 +577,14 @@ Peer TCP 默认启用 mTLS。证书身份绑定 clusterId 和 nodeId；Handshake
 
 ### C0：Reactor 单机基线
 
-- 保持 core 为纯领域模块，创建 runtime-reactor，将 transport-reactor 并入 `runtime-reactor/transport/netty` 后删除原模块。
+- core 引入 Reactor Core 并承接稳定端口，领域包保持纯 Java。
+- 将 runtime-reactor 重命名为 runtime，吸收 transport-reactor，并创建 runtime-standalone 迁移 LocalDispatcher。
 - 完成 TCP/TLS/WS、Netty MQTT codec、LoopResources、ConnectionProcessor 和 Shard lanes。
 - standalone-memory/rocksdb 使用本地 Dispatcher，协议行为与集群模式一致。
 
 ### C1：共享 Store 与控制平面
 
-- 实现 store-postgres、租约、assignment、epoch 和 fencing。
+- 实现 store-postgres、cluster-outbox-postgres、租约、assignment、epoch 和 fencing。
 - 完成节点启动、失效接管、drain 和恢复契约测试。
 
 ### C2：RSocket 数据平面
@@ -636,7 +639,7 @@ R1-R3 是替代 C1 中 PostgreSQL coordination/store 的复制存储路线，不
 5. 共享订阅跨节点仍保证一个组只选择一个消费者。
 6. Peer 慢或断开不会阻塞 Reactor Netty I/O EventLoop 或造成无界内存增长。
 7. Docker Compose、Swarm 和 Kubernetes 使用相同集群协议与所有权规则。
-8. cluster-runtime 只依赖 PeerTransport 端口，唯一生产实现为 RSocket，传输细节不会进入 Store 和 MQTT 正确性语义。
+8. runtime-cluster 只依赖 PeerTransport 端口，唯一生产实现为 RSocket，传输细节不会进入 Store 和 MQTT 正确性语义。
 9. replicated profile 只有多数派 Leader 能提交，同一日志在重放和 snapshot 恢复后得到相同 RocksDB 状态。
 10. 生产 runtimeClasspath 不包含 vertx-core、vertx-mqtt 或 Vert.x EventBus，所有公开异步端口统一使用 Mono/Flux。
 11. 多个 I/O EventLoop 能并行服务连接，同一 connectionId 和 shardId 的状态命令始终串行。

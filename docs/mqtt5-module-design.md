@@ -6,7 +6,7 @@
 >
 > 集群增量：[集群架构设计](mqtt5-cluster-architecture.md)、[集群模块详细设计](mqtt5-cluster-module-design.md)
 >
-> 演进说明：`core` 是正式领域模块名；Reactor 用例编排位于 `runtime-reactor`。项目只支持 Reactor Netty，原 `transport-reactor` 合并到 `runtime-reactor/transport/netty` 并删除独立模块。
+> 演进说明：`core` 包含纯领域包和稳定 Reactor 端口；共享用例编排位于 `runtime`，单机差异位于 `runtime-standalone`。当前 `runtime-reactor` 将重命名为 `runtime` 并吸收 `transport-reactor`。
 
 ## 1. 构建系统变更
 
@@ -24,10 +24,19 @@ include(
     // 新架构模块
     "protocol",
     "core",
-    "runtime-reactor",
-    "store-memory",
-    "store-rocksdb",
-    "security-default",
+    "runtime",
+    "runtime-standalone",
+    "store",
+    "store:memory",
+    "store:rocksdb",
+    "auth",
+    "auth:credential",
+    "auth:credential:env",
+    "auth:credential:file",
+    "auth:credential:jdbc",
+    "auth:simple",
+    "auth:scram",
+    "auth:token",
     "plugin",
     "plugin:api",
     "plugin:runtime",
@@ -67,7 +76,7 @@ netty-codec-mqtt = { module = "io.netty:netty-codec-mqtt", version.ref = "netty"
 dependencies {
     implementation(platform(libs.reactor.bom))
     implementation(libs.reactor.core)
-    // runtime-reactor 的 transport.netty 内部实现额外需要:
+    // runtime 的 transport.netty 内部实现额外需要:
     // implementation(libs.reactor.netty.core)
     // implementation(libs.netty.codec.mqtt)
 }
@@ -78,17 +87,24 @@ dependencies {
 | 模块 | 插件 | 依赖 | 禁止依赖 |
 |---|---|---|---|
 | protocol | java-library | 仅 Java 标准库 | Vert.x、Netty、Store |
-| core | java-library | protocol | Reactor、Netty、I/O、Store 实现 |
-| runtime-reactor | java-library | core、protocol、reactor-core；reactor-netty 与 netty-codec-mqtt 使用 implementation | Vert.x、具体 Store、安全和插件实现 |
-| store-memory | java-library | runtime-reactor | Broker 业务 |
-| store-rocksdb | java-library | runtime-reactor、rocksdbjni | 网络、协议 |
-| security-default | java-library | runtime-reactor | Endpoint、数据库 |
+| core | java-library | protocol、reactor-core (api) | Netty、数据库驱动、配置加载实现 |
+| runtime | java-library | core；reactor-netty 与 netty-codec-mqtt 使用 implementation | Profile 选择、具体 Store、安全和插件实现 |
+| runtime-standalone | java-library | runtime | 集群成员、RSocket、数据库实现 |
+| store:memory | java-library | core | Broker 业务 |
+| store:rocksdb | java-library | core、rocksdbjni | 网络、协议 |
+| auth:credential | java-library | core | Endpoint、数据库驱动 |
+| auth:credential:env | java-library | auth:credential | 数据库 |
+| auth:credential:file | java-library | auth:credential | 数据库 |
+| auth:credential:jdbc | java-library | auth:credential、r2dbc-spi | 网络协议 |
+| auth:simple | java-library | core、auth:credential、plugin:api | Endpoint |
+| auth:scram | java-library | core、auth:credential、plugin:api | Endpoint |
+| auth:token | java-library | core、plugin:api、jose4j | Endpoint、数据库 |
 | plugin:api | java-library | protocol、reactor-core | core 内部状态、Endpoint、Store |
-| plugin:runtime | java-library | runtime-reactor、plugin:api | MQTT 状态机 |
+| plugin:runtime | java-library | core、plugin:api | MQTT 状态机 |
 | plugin:remote | java-library | plugin:runtime、plugin:api、gRPC | MQTT 状态机、Store |
-| observability-micrometer | java-library | runtime-reactor、micrometer | 业务状态变更 |
-| broker | application | runtime-reactor + plugin:runtime + 所有适配器 | MQTT 业务规则 |
-| testkit | java-library (test-fixtures) | protocol、runtime-reactor、store-memory | 生产代码 |
+| observability-micrometer | java-library | core、micrometer | 业务状态变更 |
+| broker | application | runtime + runtime-standalone + plugin:runtime + 所有适配器 | MQTT 业务规则 |
+| testkit | java-library (test-fixtures) | protocol、core、runtime | 生产代码 |
 
 所有模块 Java toolchain 设置为 25。
 
@@ -219,15 +235,15 @@ public record ProtocolViolation(
 
 ---
 
-### 2.2 core 与 runtime-reactor 模块
+### 2.2 core 与 runtime 模块
 
-`core` 是不依赖 Reactor 的纯领域内核，只保留 command、state、transition、action 和纯规则。`runtime-reactor` 负责 BrokerEngine、用例、事务端口、mailbox、调度与异步编排，不知道具体 Store、安全、插件或集群适配器如何工作。
+`core` 包含两类代码：`command/state/transition/rule` 是同步纯领域代码，`port` 是允许使用 Mono/Flux 的稳定适配器契约。`runtime` 负责 BrokerEngine、用例、提交管线、ShardMailbox、调度与异步编排，不知道具体 Store、安全、插件或 Profile 如何工作。
 
 **基础包：** `cn.elvis.monaco.core`、`cn.elvis.monaco.runtime`
 
-以下小节按职责描述协作模型：入站/出站端口、领域服务、并发组件和配置接口归 `runtime-reactor`；纯状态和值对象归 `core`。`PhysicalConnectionState` 是例外，必须位于 `cn.elvis.monaco.runtime.transport.netty`；`LogicalConnectionState`、Session 和可持久化记录不能持有 Channel 或 ByteBuf。
+以下小节按职责描述协作模型：纯状态、值对象和稳定 adapter port 归 `core`；BrokerEngine、领域服务、并发组件和端口消费归 `runtime`。`PhysicalConnectionState` 必须位于 `cn.elvis.monaco.runtime.transport.netty`；`LogicalConnectionState`、Session 和可持久化记录不能持有 Channel 或 ByteBuf。
 
-#### 2.2.1 入站端口（port.in）
+#### 2.2.1 BrokerEngine 入站契约（runtime）
 
 ```java
 public interface BrokerEngine {
@@ -239,13 +255,12 @@ public interface BrokerEngine {
 
 `ConnectionHandle` 封装 `ConnectionSink` 和连接元数据（远端地址等），由 transport 创建。
 
-#### 2.2.2 出站端口（port.out）
+#### 2.2.2 稳定适配器端口（core.port）
 
 | 接口 | 职责 |
 |---|---|
 | `ConnectionSink` | send(ServerPacket)、flush()、close(ReasonCode) |
-| `BrokerStore` | transact(StoreOperation)、recover()、close() |
-| `TransactionView` | 事务内读写 Session、Subscription、Message、Delivery、Inflight、Retain、Will |
+| `BrokerStore` | load(ShardId)、commit(StoreCommit)、recover() |
 | `Authenticator` | authenticate(clientId, username, password) → Mono\<AuthResult\> |
 | `Authorizer` | authorizeConnect/Publish/Subscribe → Mono\<AuthzResult\> |
 | `BrokerTelemetry` | 计数、耗时、状态量、协议错误 |
@@ -254,20 +269,17 @@ public interface BrokerEngine {
 | `IdGenerator` | nextId() → String (ULID) |
 | `BrokerScheduler` | schedule(key, delay, action)、cancel(key) |
 
-**BrokerStore 事务接口：**
+**BrokerStore 原子提交接口：**
 
 ```java
 public interface BrokerStore {
-    <T> Mono<T> transact(StoreOperation<T> operation);
-    Mono<RecoverySnapshot> recover();
-    Mono<Void> close();
-}
-
-@FunctionalInterface
-public interface StoreOperation<T> {
-    T execute(TransactionView view);
+    Mono<ShardSnapshot> load(ShardId shardId);
+    Mono<CommitResult> commit(StoreCommit commit);
+    Flux<RecoveryRecord> recover();
 }
 ```
+
+`StoreCommit` 携带 `shardId`、`expectedRevision`、`expectedEpoch`、`MutationBatch` 和 Outbox 变更。禁止以多个 CRUD Store 或事务 callback/lambda 代替该契约；Memory、RocksDB、PostgreSQL 和 replicated Profile 必须通过同一 contract test。
 
 #### 2.2.3 领域模型（model）
 
@@ -372,7 +384,19 @@ broker 加载和校验后注入，core 不读取配置文件。
 
 ---
 
-### 2.3 runtime-reactor 的 transport.netty 包
+### 2.3 runtime 与 runtime-standalone
+
+`runtime` 基础包为 `cn.elvis.monaco.runtime`，持有共享 BrokerEngine、Handler、Processor、提交管线、ShardMailbox 和 `CommandDispatcher` 接口。`runtime-standalone` 基础包为 `cn.elvis.monaco.runtime.standalone`，只包含：
+
+| 类 | 职责 |
+|---|---|
+| `LocalDispatcher` | 按 shardId/clientId 进入共享 ShardMailbox |
+| `LocalOwnershipResolver` | 所有 Partition 均定位到本进程 |
+| `StandaloneRuntimeProfile` | 装配 LocalDispatcher 与单机生命周期 |
+
+runtime-standalone 不得包含 BrokerEngine、MQTT Handler、ShardMailbox、Netty codec 或 Store 实现，也不得被 runtime 反向依赖。
+
+#### 2.3.1 runtime 的 transport.netty 包
 
 客户端传输不是独立 Gradle 模块，也不设计可替换 Transport SPI。
 
@@ -432,17 +456,55 @@ RocksDB 调用运行在 Schedulers.boundedElastic()，队列满时返回 Server 
 
 ---
 
-### 2.6 security-default 模块
+### 2.6 auth 认证模块
 
-**基础包：** `cn.elvis.monaco.adapter.security`
+auth 为聚合模块，取代原 `security-default`。认证方式与凭证来源解耦，每个子模块按 plugin 标准实现。
+
+详细设计见 [auth 模块文档](modules/auth.md)。
+
+#### 2.6.1 auth:credential（凭证提供者）
+
+**基础包：** `cn.elvis.monaco.auth.credential`
 
 | 类 | 职责 |
 |---|---|
-| `DefaultSecurityFactory` | 根据配置创建 Authenticator 和 Authorizer |
-| `AnonymousAuthenticator` | 始终允许，开发环境 |
-| `PasswordFileAuthenticator` | 哈希密码文件认证 |
-| `FileAclAuthorizer` | 文件 ACL，支持 connect/publish/subscribe |
-| `AllowAllAuthorizer` | 始终允许，开发环境 |
+| `CredentialProvider` | 凭证查询接口 |
+| `StoredCredential` | 存储的凭证 record（hash、salt、iterations） |
+
+实现子模块：
+
+| 子模块 | 凭证来源 | 适用场景 |
+|---|---|---|
+| credential:env | 环境变量 | 开发/容器单用户 |
+| credential:file | properties/passwd 文件 | 小规模部署 |
+| credential:jdbc | R2DBC 数据库 | 生产多用户 |
+
+#### 2.6.2 auth:simple（基础认证）
+
+**基础包：** `cn.elvis.monaco.auth.simple`
+
+| 类 | 职责 |
+|---|---|
+| `SimpleAuthenticator` | Username/Password 比对，注入 CredentialProvider |
+| `PasswordEncoder` | 密码哈希比对（bcrypt/argon2） |
+
+#### 2.6.3 auth:scram（增强认证 — SCRAM）
+
+**基础包：** `cn.elvis.monaco.auth.scram`
+
+| 类 | 职责 |
+|---|---|
+| `ScramAuthenticator` | SCRAM-SHA-256/512 多轮质询-响应 |
+| `ScramMechanism` | enum：SHA_256、SHA_512 |
+
+#### 2.6.4 auth:token（增强认证 — Token）
+
+**基础包：** `cn.elvis.monaco.auth.token`
+
+| 类 | 职责 |
+|---|---|
+| `TokenAuthenticator` | OAuth/JWT Bearer Token 验签 |
+| `TokenVerifier` | JWK Set / 公钥验签逻辑 |
 
 ---
 
@@ -453,6 +515,8 @@ plugin 为聚合模块，包含三个子模块：`plugin:api`、`plugin:runtime`
 #### 2.7.1 plugin:api 子模块
 
 **基础包：** `cn.elvis.monaco.plugin.api`
+
+具体接口、任务依赖和验收标准见 [plugin-api 与 plugin-runtime 实现任务](modules/plugin.md)。
 
 面向第三方的稳定插件接口。不允许插件直接访问 SessionRecord、SessionRuntime、BrokerStore、Endpoint 或 core Service。
 
@@ -471,7 +535,7 @@ plugin:api 依赖 protocol（MQTT 值对象）和 reactor-core（Mono/Flux），
 
 **基础包：** `cn.elvis.monaco.plugin.runtime`
 
-实现 runtime-reactor 的安全、策略和事件端口，将第三方 Hook 结果转换为 runtime 端口结果。
+实现 core 的安全、策略和事件端口，将第三方 Hook 结果转换为 core 端口结果。
 
 | 类 | 职责 |
 |---|---|
@@ -494,7 +558,7 @@ Hook 执行时机：
 - 修改结果必须重新经过协议校验和配额检查
 - Domain Event 在事务提交后异步发送，失败不改变 ACK、Store 或 Delivery 状态
 
-core 不依赖 plugin:api。plugin:runtime 同时依赖 runtime-reactor 和 plugin:api。
+core 不依赖 plugin:api。plugin:runtime 同时依赖 core 和 plugin:api。
 
 ---
 
@@ -589,17 +653,18 @@ core 不依赖 plugin:api。plugin:runtime 同时依赖 runtime-reactor 和 plug
 | P0-1 | 创建构建骨架 | settings.gradle.kts、libs.versions.toml（Java 25）、所有新模块 build.gradle.kts | 无 | `./gradlew build` 全部通过（空模块） |
 | P0-2 | protocol — 值对象与报文模型 | packet/、model/、reason/、error/ | P0-1 | QoS、ReasonCode、值对象单元测试通过 |
 | P0-3 | protocol — 校验与匹配 | validation/、topic/ | P0-1 | TopicName/TopicFilter/Property 校验单元测试通过 |
-| P0-4 | runtime-reactor — 端口接口 | port/in/、port/out/ 全部接口 | P0-2 | 编译通过；公共 API 无 Netty 类型 |
-| P0-5 | core — 领域模型 | command/、state/、transition/、action/ | P0-2 | 编译通过且不依赖 Reactor/Netty |
-| P0-6 | runtime-reactor — BrokerConfig | config/BrokerConfig.java | P0-4 | 编译通过 |
-| P0-7 | runtime-reactor — ConnectionService | service/ConnectionService、SessionService 骨架 | P0-4, P0-5 | mock store + mock sink 单元测试通过 CONNECT 正常/异常场景 |
-| P0-8 | runtime-reactor — BrokerEngineImpl | engine/BrokerEngineImpl、ConnectionMailbox、SessionMailbox | P0-4, P0-7 | 报文正确路由到 ConnectionService |
-| P0-9 | store-memory | MemoryBrokerStore、MemoryTransactionView | P0-4 | 基本事务读写测试通过 |
-| P0-10 | runtime-reactor/transport.netty — CONNECT/PING/DISCONNECT | ReactorTransport、PacketMapper、ReactorConnectionSink、ConnectionRegistry | P0-4, P0-2 | TCP 端口可监听；旧 transport-reactor 已从 settings 删除 |
-| P0-11 | security-default 骨架 | AnonymousAuthenticator、AllowAllAuthorizer | P0-4 | 匿名认证通过 |
-| P0-12 | broker — Composition Root | MonacoApplication、BrokerConfigLoader、BrokerLifecycle | P0-8, P0-9, P0-10, P0-11 | `./gradlew :broker:run` 启动成功 |
-| P0-13 | testkit 骨架 | BrokerStoreContract、BrokerTestFixture、TestBrokerConfig | P0-9 | store-memory 通过契约测试 |
-| P0-14 | 端到端验证 | CONNECT/PING/DISCONNECT 集成测试 | P0-12 | MQTT 5 客户端闭环 |
+| P0-4 | core — Reactor 端口接口 | port/、BrokerStore/StoreCommit 与安全/策略/Event 契约 | P0-2 | reactor-core 为 api；领域包无 Reactor import |
+| P0-5 | core — 领域模型 | command/、state/、transition/、action/ | P0-2 | 编译通过且领域包不依赖 Reactor/Netty |
+| P0-6 | broker — 配置拆分 | BrokerConfigLoader、ProtocolLimits、各 adapter config | P0-4 | core 不含 Transport/RocksDB/Metrics 配置加载 |
+| P0-7 | runtime — ConnectionService | service/ConnectionService、SessionService 骨架 | P0-4, P0-5 | mock store + mock sink 单元测试通过 CONNECT 正常/异常场景 |
+| P0-8 | runtime — BrokerEngineImpl | engine/BrokerEngine、BrokerEngineImpl、ConnectionProcessor、ShardMailbox | P0-4, P0-7 | 报文正确路由且同 Shard 严格串行 |
+| P0-9 | runtime-standalone | LocalDispatcher、LocalOwnershipResolver、StandaloneRuntimeProfile | P0-8 | 不复制 Engine/Handler，单机命令进入共享 mailbox |
+| P0-10 | store-memory | MemoryBrokerStore、原子快照提交 | P0-4 | StoreCommit 不会部分应用 |
+| P0-11 | runtime/transport.netty — CONNECT/PING/DISCONNECT | ReactorTransport、PacketMapper、ReactorConnectionSink、ConnectionRegistry | P0-4, P0-2 | TCP 端口可监听；旧 transport 模块已删除 |
+| P0-12 | auth:simple 骨架 | SimpleAuthenticator + credential:env（AnonymousMode） | P0-4 | 匿名认证通过 |
+| P0-13 | broker — Composition Root | MonacoApplication、BrokerLifecycle | P0-6, P0-8 ~ P0-12 | `./gradlew :broker:run` 启动成功 |
+| P0-14 | testkit 骨架 | BrokerStoreContract、BrokerTestFixture、TestBrokerConfig | P0-10 | store-memory 通过契约测试 |
+| P0-15 | 端到端验证 | CONNECT/PING/DISCONNECT 集成测试 | P0-13 | MQTT 5 客户端闭环 |
 
 ### 3.2 P1：QoS 0/1 与订阅闭环
 
@@ -608,13 +673,13 @@ core 不依赖 plugin:api。plugin:runtime 同时依赖 runtime-reactor 和 plug
 | 编号 | 任务 | 产出 | 依赖 | 验收标准 |
 |---|---|---|---|---|
 | P1-1 | protocol — 属性校验完善 | PropertyValidator 支持 PUBLISH/SUBSCRIBE 属性、PacketResponseFactory | P0-2 | 属性合法/非法用例测试通过 |
-| P1-2 | runtime-reactor — PublishService | 入站 QoS 0/1 校验、状态转换、persist、路由请求 | P0-7, P0-8 | QoS 0 路由、QoS 1 PUBACK 单元测试通过 |
-| P1-3 | runtime-reactor — SubscriptionService | SUBSCRIBE/UNSUBSCRIBE、授权、索引更新、Retain replay 骨架 | P0-7, P0-8 | SUBACK 按序返回、部分失败测试通过 |
-| P1-4 | runtime-reactor — RoutingService | 订阅匹配、DeliveryPlan 生成、RoutingCoordinator | P1-3 | 通配符匹配、重叠订阅单份投递测试通过 |
-| P1-5 | runtime-reactor — DeliveryService | 离线队列、Receive Maximum、出站 Packet ID、事件驱动 drain | P1-2, P1-4 | 窗口背压、ACK 释放测试通过 |
-| P1-6 | runtime-reactor/transport.netty — PUB/SUB 映射 | PacketMapper 新增 PUBLISH/SUBSCRIBE 等报文映射 | P0-10, P1-2 | 报文正确转换；Netty import 未越界 |
-| P1-7 | security-default — 基础 ACL | FileAclAuthorizer | P0-11 | publish/subscribe 权限测试通过 |
-| P1-8 | store-memory — 消息与投递 | TransactionView 完善 Message/Delivery/Inflight 操作 | P0-9, P1-2 | 消息写入、队列弹出测试通过 |
+| P1-2 | runtime — PublishService | 入站 QoS 0/1 校验、状态转换、persist、路由请求 | P0-7, P0-8 | QoS 0 路由、QoS 1 PUBACK 单元测试通过 |
+| P1-3 | runtime — SubscriptionService | SUBSCRIBE/UNSUBSCRIBE、授权、索引更新、Retain replay 骨架 | P0-7, P0-8 | SUBACK 按序返回、部分失败测试通过 |
+| P1-4 | runtime — RoutingService | 订阅匹配、DeliveryPlan 生成、RoutingCoordinator | P1-3 | 通配符匹配、重叠订阅单份投递测试通过 |
+| P1-5 | runtime — DeliveryService | 离线队列、Receive Maximum、出站 Packet ID、事件驱动 drain | P1-2, P1-4 | 窗口背压、ACK 释放测试通过 |
+| P1-6 | runtime/transport.netty — PUB/SUB 映射 | PacketMapper 新增 PUBLISH/SUBSCRIBE 等报文映射 | P0-11, P1-2 | 报文正确转换；Netty import 未越界 |
+| P1-7 | auth — 基础 ACL | FileAclAuthorizer（auth:simple 内） | P0-12 | publish/subscribe 权限测试通过 |
+| P1-8 | store-memory — 消息与投递 | StoreCommit 覆盖 Message/Delivery/Inflight mutations | P0-10, P1-2 | 消息、队列和 Inflight 原子提交 |
 | P1-9 | 端到端测试 | QoS 0/1 发布订阅、通配符、断线重连、错误码 | P1-1 ~ P1-8 | 全部场景通过 |
 
 ### 3.3 P2：持久会话与 QoS 2
@@ -624,11 +689,11 @@ core 不依赖 plugin:api。plugin:runtime 同时依赖 runtime-reactor 和 plug
 | 编号 | 任务 | 产出 | 依赖 |
 |---|---|---|---|
 | P2-1 | protocol — QoS 2 状态机 | InboundQos2StateMachine、OutboundQosStateMachine | P0-2 |
-| P2-2 | runtime-reactor — Inflight 管理 | PUBREC/PUBREL/PUBCOMP 全流程 | P2-1, P1-2 |
-| P2-3 | runtime-reactor — SessionService 完善 | Clean Start=false、Session Present、Session Expiry | P0-7 |
-| P2-4 | runtime-reactor — 连接接管 | Session Taken Over + connection generation | P2-3 |
+| P2-2 | runtime — Inflight 管理 | PUBREC/PUBREL/PUBCOMP 全流程 | P2-1, P1-2 |
+| P2-3 | runtime — SessionService 完善 | Clean Start=false、Session Present、Session Expiry | P0-7 |
+| P2-4 | runtime — 连接接管 | Session Taken Over + connection generation | P2-3 |
 | P2-5 | store-rocksdb | Column Family、WriteBatch、key 编码、恢复 | P0-4 |
-| P2-6 | testkit — 完整契约 | BrokerStoreContract 全部用例 | P2-5, P0-13 |
+| P2-6 | testkit — 完整契约 | BrokerStoreContract 全部用例 | P2-5, P0-14 |
 | P2-7 | 崩溃恢复测试 | 每个 QoS 2 中间状态重启验证 | P2-2, P2-5 |
 
 ### 3.4 P3：MQTT 5 完整能力
@@ -668,19 +733,20 @@ P0-1 构建骨架
  ├── P0-2 protocol 报文模型
  │    ├── P0-3 protocol 校验匹配
  │    └──┐
- │       P0-4 runtime-reactor 端口接口
+ │       P0-4 core Reactor 端口接口
  │        ├── P0-5 core 领域模型
- │        ├── P0-6 runtime-reactor 配置
- │        ├── P0-7 runtime-reactor ConnectionService ← P0-5
- │        │    └── P0-8 runtime-reactor BrokerEngineImpl
- │        ├── P0-9 store-memory
- │        ├── P0-10 runtime-reactor/transport.netty ← P0-2
- │        └── P0-11 security-default
+ │        ├── P0-6 broker 配置拆分
+ │        ├── P0-7 runtime ConnectionService ← P0-5
+ │        │    └── P0-8 runtime BrokerEngineImpl
+ │        │         └── P0-9 runtime-standalone
+ │        ├── P0-10 store-memory
+ │        ├── P0-11 runtime/transport.netty ← P0-2
+ │        └── P0-12 auth:simple
  │
- P0-8 + P0-9 + P0-10 + P0-11
- └── P0-12 broker Composition Root
-      ├── P0-13 testkit
-      └── P0-14 端到端 CONNECT/PING/DISCONNECT
+ P0-6 + P0-8 + P0-9 + P0-10 + P0-11 + P0-12
+ └── P0-13 broker Composition Root
+      ├── P0-14 testkit
+      └── P0-15 端到端 CONNECT/PING/DISCONNECT
            │
            P1-1 ~ P1-8
            └── P1-9 端到端 QoS 0/1
@@ -697,11 +763,13 @@ P0-1 构建骨架
 ## 5. 架构验收标准
 
 1. Gradle 依赖图符合本文方向，不存在循环依赖。
-2. protocol 不依赖 Reactor；core 仅依赖 protocol，不出现 Reactor、Netty、RocksDB 或 Micrometer。
+2. protocol 不依赖 Reactor；core 只有 port 包允许 Reactor，不出现 Netty、RocksDB 或 Micrometer。
 3. 使用 store-memory 可运行全部协议组件测试，替换 store-rocksdb 无需修改 core。
 4. TCP 与 WebSocket 使用同一套 BrokerEngine 和测试场景。
 5. Broker 启动、停止和监听失败通过 Mono 准确传播。
 6. 任意 QoS 1/2 中间状态重启后，Broker 能从 Store 恢复。
 7. 删除 EventBus 后不影响核心消息投递；事件系统只服务扩展和观测。
 8. 旧 gateway/common 模块在迁移期仍可编译，不被新模块反向依赖。logging 作为独立日志库长期保留。
-9. settings 和 broker runtimeClasspath 中不存在独立 transport-reactor；Netty import 只存在于 cn.elvis.monaco.runtime.transport.netty。
+9. settings 包含 runtime 和 runtime-standalone，不存在 runtime-reactor 或 transport-reactor；Netty import 只存在于 cn.elvis.monaco.runtime.transport.netty。
+10. runtime-standalone 不包含 BrokerEngine、Handler、ShardMailbox、transport.netty 或 Store 实现，runtime 不反向依赖它。
+11. BrokerStore 位于 core.port，所有 Store adapter 只依赖 core，并通过同一原子提交契约。

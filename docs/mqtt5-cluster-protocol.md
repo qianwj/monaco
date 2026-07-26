@@ -793,6 +793,6 @@ v1 不启用应用层压缩，避免压缩炸弹和 CPU 不可控。RSocket frag
 3. connection generation、lane sequence、command sequence、action sequence 和 route sequence 互不混用。
 4. `NOT_OWNER/STALE_*` 不关闭 peer connection，身份或大版本错误必须关闭。
 5. RouteAck、CommandResult.OK 只在各自持久化提交点之后发送。
-6. Protobuf 生成类型、RSocket Payload 和 Ratis Message 不进入 `core` 或 `runtime-reactor` 公共 API。
+6. Protobuf 生成类型、RSocket Payload 和 Ratis Message 不进入 `core` 或 `runtime` 公共 API。
 7. 所有 message、batch、lane、Resume 和重排状态都有上限与指标。
 8. 至少两个相邻 minor 版本可以 rolling upgrade，旧 Raft Log 和 snapshot 可以恢复。
