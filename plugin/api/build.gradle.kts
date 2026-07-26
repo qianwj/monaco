@@ -8,10 +8,11 @@ repositories {
 
 dependencies {
     api(project(":protocol"))
-    implementation(platform(libs.reactor.bom))
-    implementation(libs.reactor.core)
+    api(platform(libs.reactor.bom))
+    api(libs.reactor.core)
 
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.reactor.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -23,4 +24,9 @@ java {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+tasks.withType<Javadoc>().configureEach {
+    (options as org.gradle.external.javadoc.StandardJavadocDocletOptions)
+        .addBooleanOption("Xdoclint:all,-missing", true)
 }

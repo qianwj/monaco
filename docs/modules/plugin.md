@@ -51,7 +51,7 @@ cn.elvis.monaco.plugin.api/
 ├── descriptor/      PluginDescriptor、ApiVersion、Capability、PluginDependency
 ├── context/         PluginRequestContext、Principal、TlsInfo、MessageOrigin
 ├── hook/            认证、授权、连接、Will、Publish、Subscription、Event Hook
-├── decision/        AuthenticationDecision、PolicyDecision、AuthorizationDecision
+├── decision/        AuthenticationDecision、EnhancedAuthenticationDecision、PolicyDecision、AuthorizationDecision
 ├── model/           ConnectView、PublishView、WillView、SubscriptionView
 ├── event/           PluginEvent 及不可变事件 DTO
 └── support/         PluginConfig、PluginLogger、PluginMetrics、PluginScheduler

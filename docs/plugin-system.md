@@ -109,7 +109,7 @@ id 在一个 Broker 实例内唯一且不可在运行时变化。apiVersion 不�
 
 plugin.jar 必须包含 Java Service Provider 配置：
 
-    META-INF/services/cn.elvis.monaco.plugin.api.MonacoPluginFactory
+    META-INF/services/cn.elvis.monaco.plugin.api.lifecycle.MonacoPluginFactory
 
 该文件只声明一个 MonacoPluginFactory 实现。plugin-runtime 为每个插件目录创建独立 ClassLoader，再调用 ServiceLoader.load(MonacoPluginFactory.class, pluginClassLoader)。未发现 Provider、发现多个 Provider、Provider 来自父 ClassLoader 或 Provider 与 Manifest capabilities 不一致时拒绝加载。
 
