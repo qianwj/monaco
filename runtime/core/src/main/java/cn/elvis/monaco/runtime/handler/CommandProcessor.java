@@ -3,7 +3,7 @@ package cn.elvis.monaco.runtime.handler;
 import cn.elvis.monaco.core.command.Command;
 import cn.elvis.monaco.core.command.CommandResult;
 import cn.elvis.monaco.core.command.SessionCommand;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.port.BrokerStore;
 import cn.elvis.monaco.core.port.ShardSnapshot;
 import cn.elvis.monaco.core.state.SessionRecord;
@@ -22,7 +22,7 @@ public class CommandProcessor implements Function<SessionCommand, Mono<CommandRe
 
     private final BrokerStore brokerStore;
     private final ActionExecutor actionExecutor;
-    private final BrokerConfig config;
+    private final ProtocolLimits limits;
 
     private final ConnectTransition connectTransition = new ConnectTransition();
     private final DisconnectTransition disconnectTransition = new DisconnectTransition();
@@ -33,10 +33,10 @@ public class CommandProcessor implements Function<SessionCommand, Mono<CommandRe
 
     public CommandProcessor(BrokerStore brokerStore,
                             ActionExecutor actionExecutor,
-                            BrokerConfig config) {
+                            ProtocolLimits limits) {
         this.brokerStore = brokerStore;
         this.actionExecutor = actionExecutor;
-        this.config = config;
+        this.limits = limits;
     }
 
     @Override
@@ -67,12 +67,12 @@ public class CommandProcessor implements Function<SessionCommand, Mono<CommandRe
 
     private TransitionResult applyTransition(Command command, SessionRecord session) {
         return switch (command) {
-            case Command.Connect c -> connectTransition.apply(c, session, null, config);
-            case Command.Disconnect c -> disconnectTransition.apply(c, session, null, config);
-            case Command.Publish c -> publishTransition.apply(c, session, null, config);
-            case Command.Subscribe c -> subscribeTransition.apply(c, session, null, config);
-            case Command.Unsubscribe c -> unsubscribeTransition.apply(c, session, null, config);
-            case Command.PingReq c -> pingTransition.apply(c, session, null, config);
+            case Command.Connect c -> connectTransition.apply(c, session, null, limits);
+            case Command.Disconnect c -> disconnectTransition.apply(c, session, null, limits);
+            case Command.Publish c -> publishTransition.apply(c, session, null, limits);
+            case Command.Subscribe c -> subscribeTransition.apply(c, session, null, limits);
+            case Command.Unsubscribe c -> unsubscribeTransition.apply(c, session, null, limits);
+            case Command.PingReq c -> pingTransition.apply(c, session, null, limits);
             case Command.PubAck c -> TransitionResult.empty();
             case Command.PubRec c -> TransitionResult.empty();
             case Command.PubRel c -> TransitionResult.empty();

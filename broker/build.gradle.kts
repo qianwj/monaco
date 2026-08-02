@@ -9,6 +9,7 @@ repositories {
 dependencies {
     implementation(project(":core"))
     implementation(project(":store:memory"))
+    implementation(project(":plugin:api"))
     implementation(project(":plugin:runtime"))
     implementation(project(":observability-micrometer"))
 

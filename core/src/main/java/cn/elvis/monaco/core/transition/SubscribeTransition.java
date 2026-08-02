@@ -2,7 +2,7 @@ package cn.elvis.monaco.core.transition;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.state.LogicalConnection;
 import cn.elvis.monaco.core.state.SessionRecord;
 import cn.elvis.monaco.core.state.SubscriptionRecord;
@@ -19,7 +19,7 @@ public class SubscribeTransition implements Transition<Command.Subscribe> {
 
     @Override
     public TransitionResult apply(Command.Subscribe command, SessionRecord session,
-                                  LogicalConnection connection, BrokerConfig config) {
+                                  LogicalConnection connection, ProtocolLimits limits) {
         var packet = command.packet();
         List<Action> actions = new ArrayList<>();
         List<ReasonCode> reasonCodes = new ArrayList<>();
@@ -28,11 +28,11 @@ public class SubscribeTransition implements Transition<Command.Subscribe> {
         int subId = packet.properties().subscriptionIdentifier().orElse(0);
 
         for (Subscription sub : packet.subscriptions()) {
-            ReasonCode code = validateSubscription(sub, config);
+            ReasonCode code = validateSubscription(sub, limits);
             reasonCodes.add(code);
 
             if (code.isSuccess()) {
-                QoS grantedQoS = QoS.valueOf(Math.min(sub.maxQoS(), config.maximumQoS().value()));
+                QoS grantedQoS = QoS.valueOf(Math.min(sub.maxQoS(), limits.maximumQoS().value()));
                 toStore.add(new SubscriptionRecord(
                         command.clientId(),
                         sub.topicFilter(),
@@ -58,16 +58,16 @@ public class SubscribeTransition implements Transition<Command.Subscribe> {
         return TransitionResult.of(session, connection, actions);
     }
 
-    private ReasonCode validateSubscription(Subscription sub, BrokerConfig config) {
+    private ReasonCode validateSubscription(Subscription sub, ProtocolLimits limits) {
         // Wildcard check
-        if (!config.wildcardSubscriptionAvailable()) {
+        if (!limits.wildcardSubscriptionAvailable()) {
             if (sub.topicFilter().contains("#") || sub.topicFilter().contains("+")) {
                 return ReasonCode.WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED;
             }
         }
 
         // Shared subscription check
-        if (!config.sharedSubscriptionAvailable()) {
+        if (!limits.sharedSubscriptionAvailable()) {
             if (sub.topicFilter().startsWith("$share/")) {
                 return ReasonCode.SHARED_SUBSCRIPTIONS_NOT_SUPPORTED;
             }
@@ -75,7 +75,7 @@ public class SubscribeTransition implements Transition<Command.Subscribe> {
 
         // Grant QoS (capped to server max)
         QoS requested = QoS.valueOf(sub.maxQoS());
-        QoS granted = QoS.valueOf(Math.min(requested.value(), config.maximumQoS().value()));
+        QoS granted = QoS.valueOf(Math.min(requested.value(), limits.maximumQoS().value()));
         return switch (granted) {
             case AT_MOST_ONCE -> ReasonCode.GRANTED_QOS_0;
             case AT_LEAST_ONCE -> ReasonCode.GRANTED_QOS_1;

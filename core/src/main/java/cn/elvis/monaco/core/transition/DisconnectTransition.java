@@ -2,7 +2,7 @@ package cn.elvis.monaco.core.transition;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.state.LogicalConnection;
 import cn.elvis.monaco.core.state.SessionRecord;
 import cn.elvis.monaco.core.state.WillRecord;
@@ -15,7 +15,7 @@ public class DisconnectTransition implements Transition<Command.Disconnect> {
 
     @Override
     public TransitionResult apply(Command.Disconnect command, SessionRecord session,
-                                  LogicalConnection connection, BrokerConfig config) {
+                                  LogicalConnection connection, ProtocolLimits limits) {
         var packet = command.packet();
         List<Action> actions = new ArrayList<>();
 

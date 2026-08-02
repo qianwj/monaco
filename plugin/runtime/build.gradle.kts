@@ -13,7 +13,14 @@ dependencies {
     implementation(libs.reactor.core)
     implementation(libs.jackson.databind)
     implementation(libs.jackson.dataformat.yaml)
-    implementation(libs.resilience4j.reactor)
+    implementation(libs.resilience4j.circuitbreaker)
+    implementation(libs.resilience4j.reactor) {
+        exclude(group = "io.github.resilience4j", module = "resilience4j-bulkhead")
+        exclude(group = "io.github.resilience4j", module = "resilience4j-micrometer")
+        exclude(group = "io.github.resilience4j", module = "resilience4j-ratelimiter")
+        exclude(group = "io.github.resilience4j", module = "resilience4j-retry")
+        exclude(group = "io.github.resilience4j", module = "resilience4j-timelimiter")
+    }
 
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.reactor.test)
@@ -28,4 +35,9 @@ java {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+tasks.withType<Javadoc>().configureEach {
+    (options as StandardJavadocDocletOptions)
+        .addBooleanOption("Xdoclint:all,-missing", true)
 }

@@ -25,10 +25,6 @@ include(
     "plugin:api",
     "plugin:runtime",
     "plugin:remote",
-    "auth",
-    "auth:credential",
-    "auth:credential:env",
-    "auth:simple",
     "observability-micrometer",
     "broker",
     "testkit"

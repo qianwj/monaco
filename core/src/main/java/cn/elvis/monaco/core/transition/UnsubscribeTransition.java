@@ -2,7 +2,7 @@ package cn.elvis.monaco.core.transition;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.state.LogicalConnection;
 import cn.elvis.monaco.core.state.SessionRecord;
 import cn.elvis.monaco.protocol.packet.ServerPacket;
@@ -16,7 +16,7 @@ public class UnsubscribeTransition implements Transition<Command.Unsubscribe> {
 
     @Override
     public TransitionResult apply(Command.Unsubscribe command, SessionRecord session,
-                                  LogicalConnection connection, BrokerConfig config) {
+                                  LogicalConnection connection, ProtocolLimits limits) {
         var packet = command.packet();
         List<Action> actions = new ArrayList<>();
         List<ReasonCode> reasonCodes = new ArrayList<>();

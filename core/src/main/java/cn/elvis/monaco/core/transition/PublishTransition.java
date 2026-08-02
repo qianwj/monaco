@@ -2,7 +2,7 @@ package cn.elvis.monaco.core.transition;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.state.InflightRecord;
 import cn.elvis.monaco.core.state.LogicalConnection;
 import cn.elvis.monaco.core.state.SessionRecord;
@@ -19,7 +19,7 @@ public class PublishTransition implements Transition<Command.Publish> {
 
     @Override
     public TransitionResult apply(Command.Publish command, SessionRecord session,
-                                  LogicalConnection connection, BrokerConfig config) {
+                                  LogicalConnection connection, ProtocolLimits limits) {
         var packet = command.packet();
         List<Action> actions = new ArrayList<>();
 

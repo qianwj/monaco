@@ -2,7 +2,7 @@ package cn.elvis.monaco.core.transition;
 
 import cn.elvis.monaco.core.command.Action;
 import cn.elvis.monaco.core.command.Command;
-import cn.elvis.monaco.core.config.BrokerConfig;
+import cn.elvis.monaco.core.limits.ProtocolLimits;
 import cn.elvis.monaco.core.state.ActiveBinding;
 import cn.elvis.monaco.core.state.ConnectionRef;
 import cn.elvis.monaco.core.state.LogicalConnection;
@@ -21,32 +21,32 @@ public class ConnectTransition implements Transition<Command.Connect> {
 
     @Override
     public TransitionResult apply(Command.Connect command, SessionRecord existingSession,
-                                  LogicalConnection existingConnection, BrokerConfig config) {
+                                  LogicalConnection existingConnection, ProtocolLimits limits) {
         var packet = command.packet();
         var props = packet.properties();
 
         // Negotiate session expiry
         int sessionExpiry = props.sessionExpiryInterval().orElse(0);
-        long maxExpiry = config.maxSessionExpiryInterval().getSeconds();
+        long maxExpiry = limits.maxSessionExpiryInterval().getSeconds();
         if (sessionExpiry > maxExpiry) {
             sessionExpiry = (int) maxExpiry;
         }
 
         // Negotiate receive maximum
         int receiveMax = props.receiveMaximum().orElse(65535);
-        receiveMax = Math.min(receiveMax, config.maxReceiveMaximum());
+        receiveMax = Math.min(receiveMax, limits.maxReceiveMaximum());
 
         // Negotiate max packet size
         int maxPacketSize = props.maximumPacketSize().orElse(Integer.MAX_VALUE);
-        maxPacketSize = Math.min(maxPacketSize, config.maxPacketSize());
+        maxPacketSize = Math.min(maxPacketSize, limits.maxPacketSize());
 
         // Negotiate topic alias maximum
         int topicAliasMax = props.topicAliasMaximum().orElse(0);
-        topicAliasMax = Math.min(topicAliasMax, config.topicAliasMaximum());
+        topicAliasMax = Math.min(topicAliasMax, limits.topicAliasMaximum());
 
         // Negotiate keep alive
         int keepAlive = packet.keepAlive();
-        int serverKeepAlive = (int) config.serverKeepAlive().getSeconds();
+        int serverKeepAlive = (int) limits.serverKeepAlive().getSeconds();
         if (serverKeepAlive > 0 && (keepAlive == 0 || keepAlive > serverKeepAlive)) {
             keepAlive = serverKeepAlive;
         }
@@ -112,16 +112,16 @@ public class ConnectTransition implements Transition<Command.Connect> {
         // Build CONNACK properties
         ConnAckProperties connAckProps = new ConnAckProperties(
                 Optional.of(sessionExpiry),
-                Optional.of(config.defaultReceiveMaximum()),
-                Optional.of(config.maximumQoS().value()),
-                Optional.of(config.retainAvailable()),
-                Optional.of(config.maxPacketSize()),
+                Optional.of(limits.defaultReceiveMaximum()),
+                Optional.of(limits.maximumQoS().value()),
+                Optional.of(limits.retainAvailable()),
+                Optional.of(limits.maxPacketSize()),
                 packet.clientId().isEmpty() ? Optional.of(command.assignedClientId()) : Optional.empty(),
-                Optional.of(config.topicAliasMaximum()),
+                Optional.of(limits.topicAliasMaximum()),
                 Optional.empty(),
-                Optional.of(config.wildcardSubscriptionAvailable()),
-                Optional.of(config.subscriptionIdentifierAvailable()),
-                Optional.of(config.sharedSubscriptionAvailable()),
+                Optional.of(limits.wildcardSubscriptionAvailable()),
+                Optional.of(limits.subscriptionIdentifierAvailable()),
+                Optional.of(limits.sharedSubscriptionAvailable()),
                 keepAlive != packet.keepAlive() ? Optional.of(keepAlive) : Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

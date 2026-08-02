@@ -60,6 +60,20 @@ public record PluginRuntimeConfig(
         return deployments.getOrDefault(pluginId, PluginDeployment.defaults());
     }
 
+    public PluginRuntimeConfig withDeployments(Map<String, PluginDeployment> replacements) {
+        return new PluginRuntimeConfig(
+                pluginsDirectory,
+                replacements,
+                maxPlugins,
+                maxJarsPerPlugin,
+                maxJarBytes,
+                maxManifestBytes,
+                maxManifestDepth,
+                maxYamlAliases,
+                lifecycleTimeout,
+                chainTimeout);
+    }
+
     private static void requirePositive(Duration value, String label) {
         if (value == null || value.isZero() || value.isNegative()) {
             throw new IllegalArgumentException(label + " must be positive");

@@ -67,6 +67,9 @@ public final class ManifestParser {
         if (document == null) {
             throw new IllegalArgumentException("Plugin manifest must not be empty");
         }
+        if (document.apiVersion() == null || document.apiVersion().isBlank()) {
+            throw new IllegalArgumentException("Plugin API version must not be blank");
+        }
         List<String> rawCapabilities = document.capabilities() == null
                 ? List.of()
                 : List.copyOf(document.capabilities());
@@ -85,11 +88,16 @@ public final class ManifestParser {
         List<PluginDependency> dependencies = document.dependencies() == null
                 ? List.of()
                 : document.dependencies().stream()
-                        .map(dependency -> new PluginDependency(
-                                dependency.id(),
-                                dependency.version() == null
-                                        ? PluginDependency.ANY_VERSION
-                                        : dependency.version()))
+                        .map(dependency -> {
+                            if (dependency == null) {
+                                throw new IllegalArgumentException("Plugin dependency must not be null");
+                            }
+                            return new PluginDependency(
+                                    dependency.id(),
+                                    dependency.version() == null
+                                            ? PluginDependency.ANY_VERSION
+                                            : dependency.version());
+                        })
                         .toList();
         return new PluginManifest(
                 document.id(),

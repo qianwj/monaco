@@ -12,6 +12,7 @@ dependencies {
     api(libs.reactor.core)
 
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.reactor.test)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

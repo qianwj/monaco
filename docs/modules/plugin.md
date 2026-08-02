@@ -1,8 +1,8 @@
 # plugin-api 与 plugin-runtime 实现任务
 
-> 状态：Proposed
+> 状态：In Progress（plugin-api 与 plugin-runtime 内核已实现）
 >
-> 更新日期：2026-07-26
+> 更新日期：2026-08-01
 >
 > 目标模块：`plugin:api`、`plugin:runtime`
 >
@@ -12,7 +12,7 @@
 
 `plugin:api` 提供第三方插件编译时依赖的稳定 Java API；`plugin:runtime` 负责在 Broker 内发现可信插件、隔离依赖、管理生命周期、执行 Hook Chain，并将插件结果适配为 `core.port`。两个模块统一使用 Reactor `Mono`/`Flux`，不引入 Vert.x `Future`、`CompletionStage` 或 Netty 类型。
 
-当前两个模块只能产出空 JAR。实施前需要修正以下边界：
+当前 `plugin-api` 已完成，`plugin-runtime` 已实现装载、生命周期、隔离、Hook Chain、Enhanced AUTH、Event 和遥测内核。实施遵循以下边界：
 
 1. `plugin:api` 的 Reactor Core 必须使用 `api`，因为 `Mono`/`Flux` 会出现在公共签名中。
 2. `plugin:api` 只依赖 `protocol` 和 Reactor Core，不依赖 `core`、`runtime`、配置解析器或日志实现。
@@ -151,7 +151,7 @@ cn.elvis.monaco.plugin.runtime/
 └── spi/             PluginSource、PluginInvoker、PluginHandleFactory
 ```
 
-`spi` 是远程模块唯一允许依赖的 runtime 包。Manifest parser、ClassLoader、catalog 和 chain 实现均为内部 API。
+`spi` 是远程模块唯一允许依赖的 runtime 包。`PluginSource` 返回仅引用 JDK、Reactor、plugin-api 和 runtime SPI 的 `PluginCandidate`；runtime 再附加 Broker 部署策略并生成内部 `PluginHandle`。Manifest parser、ClassLoader、catalog 和 chain 实现均为内部 API。
 
 ### 4.2 本地装载
 
@@ -267,6 +267,8 @@ API-01~API-05 是 runtime 开工前置；API-06 与 API-07 可以按 MQTT 能力
 | RT-10 | Telemetry 与 Health | RT-04~RT-09 | state/invocation/timeout/queue/fingerprint 指标与脱敏日志 |
 | RT-11 | Broker 生命周期装配 | RT-07~RT-10 | required ACTIVE 后 READY；drain/stop 顺序确定 |
 | RT-12 | Contract 与故障测试 | RT-01~RT-11 | 本节第 6 节测试全部自动化 |
+
+实施状态（2026-08-01）：RT-01~RT-06、RT-08~RT-10 已完成；RT-11 的 runtime 启停、readiness、fingerprint 和 drain 已完成。RT-07 尚未实现，因为当前 `core` 还没有文档约定的 Authenticator、Authorizer、PolicyRuntime 和 DomainEventSink 端口；必须先在 core 冻结这些端口，再增加 adapter，不能由 plugin-runtime 私自定义替代接口。RT-12 已覆盖模块级契约与故障测试，Broker component test 随 RT-07 和 Broker 装配补齐。
 
 ## 6. 测试规划
 
